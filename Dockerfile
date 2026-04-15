@@ -16,8 +16,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 
-# Copy entrypoint script from infrastructure
-COPY infrastructure/scripts/entrypoint.sh /entrypoint.sh
+# Copy entrypoint script from the central infrastructure directory (relative to build context)
+COPY ../../infrastructure/scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 9091
