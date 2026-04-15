@@ -3,6 +3,7 @@ package runtime_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -55,12 +56,7 @@ func (m *MockStore) CompleteTask(ctx context.Context, taskID uuid.UUID, result m
 	return args.Error(0)
 }
 
-func (m *MockStore) ClaimPendingTask(ctx context.Context, capabilities []string, agentID string) (*store.Task, error) {
-	args := m.Called(ctx, capabilities, agentID)
-	return args.Get(0).(*store.Task), args.Error(1)
-}
-
-// Implement remaining methods with panic to satisfy interface during testing
+// Implement remaining Store interface methods for compilation
 func (m *MockStore) AcquireLease(ctx context.Context, instanceID uuid.UUID, ownerID string, duration time.Duration) (bool, error) { return true, nil }
 func (m *MockStore) RenewLease(ctx context.Context, instanceID uuid.UUID, ownerID string, duration time.Duration) error { return nil }
 func (m *MockStore) CreateTimer(ctx context.Context, instanceID uuid.UUID, fireAt time.Time, timerType string, payload map[string]interface{}) (uuid.UUID, error) { return uuid.New(), nil }
@@ -70,9 +66,6 @@ func (m *MockStore) CreateTask(ctx context.Context, task *store.Task) error { re
 func (m *MockStore) GetPendingTasks(ctx context.Context, capabilities []string, limit int) ([]store.Task, error) { return nil, nil }
 func (m *MockStore) AssignTask(ctx context.Context, taskID uuid.UUID, agentID string, deadline time.Time) error { return nil }
 func (m *MockStore) FailTask(ctx context.Context, taskID uuid.UUID, errorDetails map[string]interface{}) error { return nil }
-func (m *MockStore) ClaimWorkflowInstance(ctx context.Context, instanceID uuid.UUID, ownerID string) (bool, error) { return true, nil }
-func (m *MockStore) ReleaseWorkflowInstance(ctx context.Context, instanceID uuid.UUID, ownerID string) error { return nil }
-func (m *MockStore) UpdateWorkerLease(ctx context.Context, instanceID uuid.UUID, pid int, ownerID string) error { return nil }
 
 func TestEngine_StartWorkflow(t *testing.T) {
 	mockStore := new(MockStore)
@@ -85,7 +78,7 @@ func TestEngine_StartWorkflow(t *testing.T) {
 		Start: "start",
 		States: []model.State{
 			&model.OperationState{
-				BaseState: model.BaseState{Name: "start", Type: "operation", End: true},
+				BaseState: model.BaseState{Name: "start", Type: "operation", EndFlag: true},
 				Actions:   []model.Action{},
 			},
 		},

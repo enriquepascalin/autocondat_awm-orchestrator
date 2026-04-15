@@ -12,12 +12,15 @@ RUN curl -L https://github.com/golang-migrate/migrate/releases/download/v4.17.0/
     mv migrate /usr/local/bin/migrate
 
 WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
 
-# Copy entrypoint script from the central infrastructure directory (relative to build context)
-COPY ../../infrastructure/scripts/entrypoint.sh /entrypoint.sh
+# Copy only the service source first (for better caching)
+COPY services/awm-orchestrator/go.mod services/awm-orchestrator/go.sum ./
+RUN go mod download
+
+COPY services/awm-orchestrator/ ./
+
+# Copy entrypoint script from root scripts folder
+COPY scripts/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 9091

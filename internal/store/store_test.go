@@ -74,7 +74,7 @@ func TestPostgresStore_AppendEvents_ConcurrencyConflict(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE workflow_instances`).
 		WithArgs(instanceID, int64(0)).
-		WillReturnError(sqlmock.ErrCancelled)
+		WillReturnRows(sqlmock.NewRows([]string{"version"})) // empty result = no matching row
 	mock.ExpectRollback()
 
 	err = s.AppendEvents(context.Background(), instanceID, 0, events)
