@@ -1,0 +1,14 @@
+id: test-workflow
+name: Test Workflow
+version: "1.0"
+start: hello_world
+states:
+  - name: hello_world
+    type: operation
+    actions:
+      - name: log_message
+        functionRef:
+          refName: log
+        arguments:
+          message: "Hello from YAML workflow!"
+    end: true
