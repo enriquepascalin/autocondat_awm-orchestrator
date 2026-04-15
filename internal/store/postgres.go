@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -141,7 +142,6 @@ func (s *PostgresStore) UpdateWorkflowStatus(ctx context.Context, instanceID uui
 }
 
 // AcquireLease attempts to claim ownership of a workflow instance.
-// Uses PostgreSQL advisory locks for distributed coordination.
 func (s *PostgresStore) AcquireLease(ctx context.Context, instanceID uuid.UUID, ownerID string, duration time.Duration) (bool, error) {
 	var locked bool
 	query := `SELECT pg_try_advisory_lock($1)`
@@ -153,9 +153,7 @@ func (s *PostgresStore) AcquireLease(ctx context.Context, instanceID uuid.UUID, 
 }
 
 // RenewLease extends the lease for an owned workflow.
-// Advisory locks persist until explicitly released or connection closed.
 func (s *PostgresStore) RenewLease(ctx context.Context, instanceID uuid.UUID, ownerID string, duration time.Duration) error {
-	// Advisory locks don't need renewal; they last until connection close.
 	return nil
 }
 
@@ -217,7 +215,7 @@ func (s *PostgresStore) CreateTask(ctx context.Context, task *Task) error {
 		task.ID,
 		task.WorkflowInstanceID,
 		task.ActivityName,
-		task.Capabilities,
+		pq.Array(task.Capabilities),
 		inputJSON,
 		task.Status,
 		task.Deadline,
@@ -230,7 +228,7 @@ func (s *PostgresStore) GetPendingTasks(ctx context.Context, capabilities []stri
 	query := `SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline
               FROM tasks WHERE status = 'PENDING' AND capabilities && $1
               LIMIT $2`
-	rows, err := s.db.QueryContext(ctx, query, capabilities, limit)
+	rows, err := s.db.QueryContext(ctx, query, pq.Array(capabilities), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -263,8 +261,14 @@ func (s *PostgresStore) GetTask(ctx context.Context, taskID uuid.UUID) (*Task, e
 	query := `SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline
               FROM tasks WHERE id = $1`
 	err := s.db.QueryRowContext(ctx, query, taskID).Scan(
-		&t.ID, &t.WorkflowInstanceID, &t.ActivityName, &t.Capabilities, &inputBytes,
-		&t.Status, &assignedAgentID, &t.Deadline,
+		&t.ID,
+		&t.WorkflowInstanceID,
+		&t.ActivityName,
+		&t.Capabilities,
+		&inputBytes,
+		&t.Status,
+		&assignedAgentID,
+		&t.Deadline,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -308,8 +312,6 @@ func (s *PostgresStore) FailTask(ctx context.Context, taskID uuid.UUID, errorDet
 
 // instanceIDToInt64 converts a UUID to an int64 for advisory lock purposes.
 func instanceIDToInt64(id uuid.UUID) int64 {
-	// Use first 8 bytes of UUID as int64 for advisory lock.
-	// This is a common pattern; collisions are extremely unlikely.
 	var val int64
 	for i := 0; i < 8; i++ {
 		val = (val << 8) | int64(id[i])

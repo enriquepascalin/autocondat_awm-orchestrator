@@ -13,6 +13,7 @@ import (
 )
 
 func TestPublicServer_CreateWorkflowDefinition_InvalidYAML(t *testing.T) {
+	// NewPublicServer signature: NewPublicServer(engine, registry, sup, st) - 4 arguments
 	server := api.NewPublicServer(nil, nil, nil, nil)
 	req := &awmv1.CreateWorkflowDefinitionRequest{
 		Tenant:      "acme",
@@ -24,10 +25,4 @@ func TestPublicServer_CreateWorkflowDefinition_InvalidYAML(t *testing.T) {
 	st, ok := status.FromError(err)
 	assert.True(t, ok)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
-}
-
-func TestPublicServer_StartWorkflow_DefinitionNotFound(t *testing.T) {
-	// Cannot easily mock DefinitionRegistry (concrete struct), so skip for now.
-	// This test will be rewritten when DefinitionRegistry is behind an interface.
-	t.Skip("requires interface extraction for DefinitionRegistry")
 }

@@ -2,12 +2,14 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -74,7 +76,7 @@ func TestPostgresStore_AppendEvents_ConcurrencyConflict(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(`UPDATE workflow_instances`).
 		WithArgs(instanceID, int64(0)).
-		WillReturnRows(sqlmock.NewRows([]string{"version"})) // empty result = no matching row
+		WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
 	err = s.AppendEvents(context.Background(), instanceID, 0, events)
@@ -91,20 +93,12 @@ func TestPostgresStore_GetTask(t *testing.T) {
 
 	taskID := uuid.New()
 	workflowID := uuid.New()
-	expectedTask := &store.Task{
-		ID:                 taskID,
-		WorkflowInstanceID: workflowID,
-		ActivityName:       "test_activity",
-		Capabilities:       []string{"test"},
-		Input:              map[string]interface{}{"key": "value"},
-		Status:             "PENDING",
-	}
 
 	rows := sqlmock.NewRows([]string{
 		"id", "workflow_instance_id", "activity_name", "capabilities",
 		"input", "status", "assigned_agent_id", "deadline",
 	}).AddRow(
-		taskID, workflowID, "test_activity", "{test}",
+		taskID, workflowID, "test_activity", `{test}`,
 		`{"key":"value"}`, "PENDING", nil, nil,
 	)
 
@@ -113,8 +107,10 @@ func TestPostgresStore_GetTask(t *testing.T) {
 		WillReturnRows(rows)
 
 	task, err := s.GetTask(context.Background(), taskID)
-	assert.NoError(t, err)
-	assert.Equal(t, expectedTask.ID, task.ID)
-	assert.Equal(t, expectedTask.ActivityName, task.ActivityName)
+	require.NoError(t, err)
+	require.NotNil(t, task)
+	assert.Equal(t, taskID, task.ID)
+	assert.Equal(t, "test_activity", task.ActivityName)
+	assert.Equal(t, pq.StringArray{"test"}, task.Capabilities)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

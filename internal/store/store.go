@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 // HistoryEvent represents a single event in the workflow log.
@@ -43,7 +44,7 @@ type Task struct {
 	ID                 uuid.UUID
 	WorkflowInstanceID uuid.UUID
 	ActivityName       string
-	Capabilities       []string
+	Capabilities       pq.StringArray // PostgreSQL array scanning
 	Input              map[string]interface{}
 	Status             string
 	AssignedAgentID    *string
