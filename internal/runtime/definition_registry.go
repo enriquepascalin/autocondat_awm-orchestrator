@@ -33,15 +33,18 @@ func NewDefinitionRegistry(db *sqlx.DB) *DefinitionRegistry {
 
 // Store persists a workflow definition in the database.
 func (r *DefinitionRegistry) Store(ctx context.Context, def *model.WorkflowDefinition) error {
+	if r.db == nil {
+		return fmt.Errorf("no database connection")
+	}
 	yamlContent := def.YAML
 	if yamlContent == "" {
 		return fmt.Errorf("YAML content is required to store definition")
 	}
+	if def.Tenant == "" {
+		return fmt.Errorf("tenant UUID is required to store definition")
+	}
 
-	// Tenant is stored as part of the workflow_definitions table; for now we use a default tenant.
-	// In a full implementation, tenant would be passed separately.
-	tenantID := "00000000-0000-0000-0000-000000000000" // default tenant
-
+	// def.Tenant is expected to be the tenant UUID (already resolved by the caller).
 	query := `
 		INSERT INTO workflow_definitions (id, tenant_id, name, definition_id, version, yaml_content, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
@@ -51,8 +54,8 @@ func (r *DefinitionRegistry) Store(ctx context.Context, def *model.WorkflowDefin
 			updated_at = NOW()
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		uuid.New(), // generate new ID for this version
-		tenantID,
+		uuid.New(),
+		def.Tenant,
 		def.Name,
 		def.ID,
 		def.Version,

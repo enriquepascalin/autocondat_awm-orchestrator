@@ -2,17 +2,20 @@ package api
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"log"
 
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/enriquepascalin/awm-orchestrator/internal/parser"
 	awmv1 "github.com/enriquepascalin/awm-orchestrator/internal/proto/awm/v1"
 	"github.com/enriquepascalin/awm-orchestrator/internal/runtime"
 	"github.com/enriquepascalin/awm-orchestrator/internal/store"
 	"github.com/enriquepascalin/awm-orchestrator/internal/supervisor"
-	"github.com/enriquepascalin/awm-orchestrator/internal/parser"
 )
 
 type PublicServer struct {
@@ -21,10 +24,11 @@ type PublicServer struct {
 	registry   *runtime.DefinitionRegistry
 	supervisor *supervisor.Supervisor
 	store      store.Store
+	db         *sqlx.DB
 }
 
-func NewPublicServer(engine *runtime.Engine, registry *runtime.DefinitionRegistry, sup *supervisor.Supervisor, st store.Store) *PublicServer {
-	return &PublicServer{engine: engine, registry: registry, supervisor: sup, store: st}
+func NewPublicServer(engine *runtime.Engine, registry *runtime.DefinitionRegistry, sup *supervisor.Supervisor, st store.Store, db *sqlx.DB) *PublicServer {
+	return &PublicServer{engine: engine, registry: registry, supervisor: sup, store: st, db: db}
 }
 
 func (s *PublicServer) StartWorkflow(ctx context.Context, req *awmv1.StartWorkflowRequest) (*awmv1.StartWorkflowResponse, error) {
@@ -76,19 +80,29 @@ func (s *PublicServer) CreateWorkflowDefinition(ctx context.Context, req *awmv1.
 		return nil, status.Errorf(codes.InvalidArgument, "yaml_content is required")
 	}
 
-	// Parse the YAML to validate it
+	// Parse and validate YAML first (no DB needed)
 	def, err := parser.Parse([]byte(req.YamlContent))
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid YAML: %v", err)
 	}
 
-	// Use the ID from the YAML if present, otherwise generate one
+	// Resolve tenant ID by name
+	var tenantID string
+	err = s.db.QueryRowContext(ctx, "SELECT id FROM tenants WHERE name = $1", req.Tenant).Scan(&tenantID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, status.Errorf(codes.NotFound, "tenant %q not found", req.Tenant)
+		}
+		log.Printf("Failed to resolve tenant %q: %v", req.Tenant, err)
+		return nil, status.Errorf(codes.Internal, "failed to resolve tenant")
+	}
+
 	if def.ID == "" {
 		def.ID = uuid.New().String()
 	}
-	def.Tenant = req.Tenant
+	def.Tenant = tenantID
 	def.Name = req.Name
-	def.Version = "1" // version management can be added later
+	def.Version = "1"
 	def.YAML = req.YamlContent
 
 	if err := s.registry.Store(ctx, def); err != nil {

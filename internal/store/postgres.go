@@ -62,22 +62,37 @@ func (s *PostgresStore) AppendEvents(ctx context.Context, instanceID uuid.UUID, 
 // LoadInstance retrieves the snapshot and all historical events.
 func (s *PostgresStore) LoadInstance(ctx context.Context, instanceID uuid.UUID) (*WorkflowInstance, []HistoryEvent, error) {
 	var instance WorkflowInstance
-	query := `SELECT id, workflow_definition_id, tenant, status, current_phase, dimensional_state, version, created_at, updated_at
-              FROM workflow_instances WHERE id = $1`
-	err := s.db.GetContext(ctx, &instance, query, instanceID)
+	var dimensionalStateBytes []byte
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, workflow_definition_id, tenant, status, current_phase, dimensional_state, version, created_at, updated_at
+         FROM workflow_instances WHERE id = $1`, instanceID)
+	err := row.Scan(
+		&instance.ID,
+		&instance.WorkflowDefinitionID,
+		&instance.Tenant,
+		&instance.Status,
+		&instance.CurrentPhase,
+		&dimensionalStateBytes,
+		&instance.Version,
+		&instance.CreatedAt,
+		&instance.UpdatedAt,
+	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil, ErrInstanceNotFound
 		}
 		return nil, nil, fmt.Errorf("query workflow instance: %w", err)
 	}
+	if err := json.Unmarshal(dimensionalStateBytes, &instance.DimensionalState); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal dimensional state: %w", err)
+	}
 
 	var events []HistoryEvent
-	query = `SELECT sequence_num, event_type, payload, recorded_at
-             FROM workflow_history 
-             WHERE workflow_instance_id = $1 
-             ORDER BY sequence_num ASC`
-	rows, err := s.db.QueryContext(ctx, query, instanceID)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT sequence_num, event_type, payload, recorded_at
+         FROM workflow_history
+         WHERE workflow_instance_id = $1
+         ORDER BY sequence_num ASC`, instanceID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query history: %w", err)
 	}
@@ -100,12 +115,35 @@ func (s *PostgresStore) LoadInstance(ctx context.Context, instanceID uuid.UUID) 
 
 // ListActiveInstances returns all workflow instances with status 'RUNNING'.
 func (s *PostgresStore) ListActiveInstances(ctx context.Context) ([]WorkflowInstance, error) {
-	var instances []WorkflowInstance
-	query := `SELECT id, workflow_definition_id, tenant, status, current_phase, dimensional_state, version, created_at, updated_at
-              FROM workflow_instances WHERE status = 'RUNNING'`
-	err := s.db.SelectContext(ctx, &instances, query)
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, workflow_definition_id, tenant, status, current_phase, dimensional_state, version, created_at, updated_at
+         FROM workflow_instances WHERE status = 'RUNNING'`)
 	if err != nil {
 		return nil, fmt.Errorf("list active instances: %w", err)
+	}
+	defer rows.Close()
+
+	var instances []WorkflowInstance
+	for rows.Next() {
+		var inst WorkflowInstance
+		var dimensionalStateBytes []byte
+		if err := rows.Scan(
+			&inst.ID,
+			&inst.WorkflowDefinitionID,
+			&inst.Tenant,
+			&inst.Status,
+			&inst.CurrentPhase,
+			&dimensionalStateBytes,
+			&inst.Version,
+			&inst.CreatedAt,
+			&inst.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan workflow instance: %w", err)
+		}
+		if err := json.Unmarshal(dimensionalStateBytes, &inst.DimensionalState); err != nil {
+			return nil, fmt.Errorf("unmarshal dimensional state: %w", err)
+		}
+		instances = append(instances, inst)
 	}
 	return instances, nil
 }
@@ -224,11 +262,22 @@ func (s *PostgresStore) CreateTask(ctx context.Context, task *Task) error {
 }
 
 // GetPendingTasks returns tasks that match any of the given capabilities.
+// If capabilities is empty, all pending tasks are returned regardless of capability.
 func (s *PostgresStore) GetPendingTasks(ctx context.Context, capabilities []string, limit int) ([]Task, error) {
-	query := `SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline
-              FROM tasks WHERE status = 'PENDING' AND capabilities && $1
-              LIMIT $2`
-	rows, err := s.db.QueryContext(ctx, query, pq.Array(capabilities), limit)
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if len(capabilities) == 0 {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline
+             FROM tasks WHERE status = 'PENDING' LIMIT $1`, limit)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline
+             FROM tasks WHERE status = 'PENDING' AND capabilities && $1 LIMIT $2`,
+			pq.Array(capabilities), limit)
+	}
 	if err != nil {
 		return nil, err
 	}

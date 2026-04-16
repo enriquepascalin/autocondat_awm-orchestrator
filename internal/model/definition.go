@@ -1,6 +1,14 @@
 package model
 
-import "time"
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"time"
+)
+
+// iso8601Re matches ISO 8601 durations: P[nD][T[nH][nM][n[.n]S]]
+var iso8601Re = regexp.MustCompile(`^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?$`)
 
 // WorkflowDefinition represents a parsed workflow YAML.
 type WorkflowDefinition struct {
@@ -60,7 +68,36 @@ type FunctionRef struct {
 	Arguments map[string]interface{} `yaml:"arguments,omitempty"`
 }
 
-// ParseDuration converts ISO 8601 string to time.Duration.
+// ParseDuration parses an ISO 8601 duration string (e.g. "PT10S", "PT48H", "P1DT2H30M")
+// or a Go duration string (e.g. "10s", "1h30m") into a time.Duration.
 func ParseDuration(iso string) (time.Duration, error) {
-	return time.ParseDuration(iso)
+	// Try Go format first so existing tests and configs keep working.
+	if d, err := time.ParseDuration(iso); err == nil {
+		return d, nil
+	}
+	m := iso8601Re.FindStringSubmatch(iso)
+	if m == nil {
+		return 0, fmt.Errorf("invalid duration %q: expected ISO 8601 (e.g. PT10S) or Go format (e.g. 10s)", iso)
+	}
+	if m[1] == "" && m[2] == "" && m[3] == "" && m[4] == "" {
+		return 0, fmt.Errorf("invalid duration %q: no time components found", iso)
+	}
+	var d time.Duration
+	if m[1] != "" {
+		n, _ := strconv.Atoi(m[1])
+		d += time.Duration(n) * 24 * time.Hour
+	}
+	if m[2] != "" {
+		n, _ := strconv.Atoi(m[2])
+		d += time.Duration(n) * time.Hour
+	}
+	if m[3] != "" {
+		n, _ := strconv.Atoi(m[3])
+		d += time.Duration(n) * time.Minute
+	}
+	if m[4] != "" {
+		f, _ := strconv.ParseFloat(m[4], 64)
+		d += time.Duration(f * float64(time.Second))
+	}
+	return d, nil
 }

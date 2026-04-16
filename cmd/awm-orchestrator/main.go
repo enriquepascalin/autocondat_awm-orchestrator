@@ -19,6 +19,7 @@ import (
 	"github.com/enriquepascalin/awm-orchestrator/internal/runtime"
 	"github.com/enriquepascalin/awm-orchestrator/internal/store"
 	"github.com/enriquepascalin/awm-orchestrator/internal/supervisor"
+	"github.com/enriquepascalin/awm-orchestrator/internal/timer"
 )
 
 func main() {
@@ -37,6 +38,10 @@ func main() {
 	st := store.NewPostgresStore(db)
 	definitionRegistry := runtime.NewDefinitionRegistry(db)
 	engine := runtime.NewEngine(st, definitionRegistry)
+
+	timerSvc := timer.NewService(st, engine)
+	go timerSvc.Start(context.Background())
+	log.Println("Timer service started")
 
 	workerBinary := os.Getenv("AWM_WORKER_BINARY")
 	if workerBinary == "" {
@@ -59,7 +64,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 	orchestratorServer := api.NewOrchestratorServer(engine, sup)
 	awmv1.RegisterOrchestratorServer(grpcServer, orchestratorServer)
-	publicServer := api.NewPublicServer(engine, definitionRegistry, sup, st)
+	publicServer := api.NewPublicServer(engine, definitionRegistry, sup, st, db)
 	awmv1.RegisterPublicServer(grpcServer, publicServer)
 	reflection.Register(grpcServer)
 
@@ -73,6 +78,7 @@ func main() {
 	go func() {
 		<-sigChan
 		log.Println("Shutting down gracefully...")
+		timerSvc.Stop()
 		sup.StopAll()
 		grpcServer.GracefulStop()
 		time.Sleep(2 * time.Second)

@@ -8,13 +8,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	awmv1 "github.com/enriquepascalin/awm-orchestrator/internal/proto/awm/v1"
 	"github.com/enriquepascalin/awm-orchestrator/internal/api"
+	awmv1 "github.com/enriquepascalin/awm-orchestrator/internal/proto/awm/v1"
 )
 
 func TestPublicServer_CreateWorkflowDefinition_InvalidYAML(t *testing.T) {
-	// NewPublicServer signature: NewPublicServer(engine, registry, sup, st) - 4 arguments
-	server := api.NewPublicServer(nil, nil, nil, nil)
+	// NewPublicServer expects 5 arguments: engine, registry, sup, st, db
+	server := api.NewPublicServer(nil, nil, nil, nil, nil)
 	req := &awmv1.CreateWorkflowDefinitionRequest{
 		Tenant:      "acme",
 		Name:        "Test",

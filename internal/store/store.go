@@ -19,36 +19,36 @@ type HistoryEvent struct {
 
 // WorkflowInstance is the current snapshot of a workflow.
 type WorkflowInstance struct {
-	ID                   uuid.UUID              `json:"id"`
-	WorkflowDefinitionID string                 `json:"workflow_definition_id"`
-	Tenant               string                 `json:"tenant"`
-	Status               string                 `json:"status"`
-	CurrentPhase         string                 `json:"current_phase"`
-	DimensionalState     map[string]interface{} `json:"dimensional_state"`
-	Version              int64                  `json:"version"`
-	CreatedAt            time.Time              `json:"created_at"`
-	UpdatedAt            time.Time              `json:"updated_at"`
+	ID                   uuid.UUID              `db:"id" json:"id"`
+	WorkflowDefinitionID string                 `db:"workflow_definition_id" json:"workflow_definition_id"`
+	Tenant               string                 `db:"tenant" json:"tenant"`
+	Status               string                 `db:"status" json:"status"`
+	CurrentPhase         string                 `db:"current_phase" json:"current_phase"`
+	DimensionalState     map[string]interface{} `db:"dimensional_state" json:"dimensional_state"`
+	Version              int64                  `db:"version" json:"version"`
+	CreatedAt            time.Time              `db:"created_at" json:"created_at"`
+	UpdatedAt            time.Time              `db:"updated_at" json:"updated_at"`
 }
 
 // Timer represents a durable timer.
 type Timer struct {
-	ID                 uuid.UUID
-	WorkflowInstanceID uuid.UUID
-	FireAt             time.Time
-	TimerType          string
-	Payload            map[string]interface{}
+	ID                 uuid.UUID              `db:"id"`
+	WorkflowInstanceID uuid.UUID              `db:"workflow_instance_id"`
+	FireAt             time.Time              `db:"fire_at"`
+	TimerType          string                 `db:"timer_type"`
+	Payload            map[string]interface{} `db:"payload"`
 }
 
 // Task represents a unit of work for an agent.
 type Task struct {
-	ID                 uuid.UUID
-	WorkflowInstanceID uuid.UUID
-	ActivityName       string
-	Capabilities       pq.StringArray // PostgreSQL array scanning
-	Input              map[string]interface{}
-	Status             string
-	AssignedAgentID    *string
-	Deadline           *time.Time
+	ID                 uuid.UUID       `db:"id"`
+	WorkflowInstanceID uuid.UUID       `db:"workflow_instance_id"`
+	ActivityName       string          `db:"activity_name"`
+	Capabilities       pq.StringArray  `db:"capabilities"`
+	Input              map[string]interface{} `db:"input"`
+	Status             string          `db:"status"`
+	AssignedAgentID    *string         `db:"assigned_agent_id"`
+	Deadline           *time.Time      `db:"deadline"`
 }
 
 // Store defines the persistence operations required for event sourcing.
