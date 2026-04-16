@@ -179,6 +179,23 @@ func (s *PostgresStore) UpdateWorkflowStatus(ctx context.Context, instanceID uui
 	return err
 }
 
+// UpdateCurrentPhase advances the workflow snapshot to the named state.
+func (s *PostgresStore) UpdateCurrentPhase(ctx context.Context, instanceID uuid.UUID, phase string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE workflow_instances SET current_phase = $1, updated_at = NOW() WHERE id = $2`,
+		phase, instanceID)
+	return err
+}
+
+// CountPendingTasks returns the number of PENDING or ASSIGNED tasks for an instance.
+func (s *PostgresStore) CountPendingTasks(ctx context.Context, instanceID uuid.UUID) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM tasks WHERE workflow_instance_id = $1 AND status IN ('PENDING', 'ASSIGNED')`,
+		instanceID).Scan(&count)
+	return count, err
+}
+
 // AcquireLease attempts to claim ownership of a workflow instance.
 func (s *PostgresStore) AcquireLease(ctx context.Context, instanceID uuid.UUID, ownerID string, duration time.Duration) (bool, error) {
 	var locked bool
@@ -247,16 +264,20 @@ func (s *PostgresStore) CreateTask(ctx context.Context, task *Task) error {
 		return err
 	}
 
-	query := `INSERT INTO tasks (id, workflow_instance_id, activity_name, capabilities, input, status, deadline)
-              VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	query := `INSERT INTO tasks
+		(id, workflow_instance_id, state_name, activity_name, capabilities, roles, input, status, deadline, parent_task_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 	_, err = s.db.ExecContext(ctx, query,
 		task.ID,
 		task.WorkflowInstanceID,
+		task.StateName,
 		task.ActivityName,
 		pq.Array(task.Capabilities),
+		pq.Array(task.Roles),
 		inputJSON,
 		task.Status,
 		task.Deadline,
+		task.ParentTaskID,
 	)
 	return err
 }
@@ -268,14 +289,13 @@ func (s *PostgresStore) GetPendingTasks(ctx context.Context, capabilities []stri
 		rows *sql.Rows
 		err  error
 	)
+	const cols = `id, workflow_instance_id, state_name, activity_name, capabilities, roles, input, status, assigned_agent_id, deadline, parent_task_id`
 	if len(capabilities) == 0 {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline
-             FROM tasks WHERE status = 'PENDING' LIMIT $1`, limit)
+			`SELECT `+cols+` FROM tasks WHERE status = 'PENDING' LIMIT $1`, limit)
 	} else {
 		rows, err = s.db.QueryContext(ctx,
-			`SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline
-             FROM tasks WHERE status = 'PENDING' AND capabilities && $1 LIMIT $2`,
+			`SELECT `+cols+` FROM tasks WHERE status = 'PENDING' AND capabilities && $1 LIMIT $2`,
 			pq.Array(capabilities), limit)
 	}
 	if err != nil {
@@ -285,48 +305,64 @@ func (s *PostgresStore) GetPendingTasks(ctx context.Context, capabilities []stri
 
 	var tasks []Task
 	for rows.Next() {
-		var t Task
-		var inputBytes []byte
-		var assignedAgentID sql.NullString
-		if err := rows.Scan(&t.ID, &t.WorkflowInstanceID, &t.ActivityName, &t.Capabilities, &inputBytes, &t.Status, &assignedAgentID, &t.Deadline); err != nil {
+		t, err := scanTask(rows)
+		if err != nil {
 			return nil, err
 		}
-		if assignedAgentID.Valid {
-			t.AssignedAgentID = &assignedAgentID.String
-		}
-		if err := json.Unmarshal(inputBytes, &t.Input); err != nil {
-			return nil, err
-		}
-		tasks = append(tasks, t)
+		tasks = append(tasks, *t)
 	}
 	return tasks, nil
 }
 
 // GetTask retrieves a single task by ID.
 func (s *PostgresStore) GetTask(ctx context.Context, taskID uuid.UUID) (*Task, error) {
+	const cols = `id, workflow_instance_id, state_name, activity_name, capabilities, roles, input, status, assigned_agent_id, deadline, parent_task_id`
+	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM tasks WHERE id = $1`, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("query task: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, ErrTaskNotFound
+	}
+	t, err := scanTask(rows)
+	if err != nil {
+		return nil, fmt.Errorf("scan task: %w", err)
+	}
+	return t, nil
+}
+
+// taskScanner is satisfied by both *sql.Rows and *sql.Row.
+type taskScanner interface {
+	Scan(dest ...interface{}) error
+}
+
+// scanTask reads one task row (all enriched columns).
+func scanTask(row taskScanner) (*Task, error) {
 	var t Task
 	var inputBytes []byte
 	var assignedAgentID sql.NullString
-	query := `SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline
-              FROM tasks WHERE id = $1`
-	err := s.db.QueryRowContext(ctx, query, taskID).Scan(
+	var parentTaskID uuid.NullUUID
+	if err := row.Scan(
 		&t.ID,
 		&t.WorkflowInstanceID,
+		&t.StateName,
 		&t.ActivityName,
 		&t.Capabilities,
+		&t.Roles,
 		&inputBytes,
 		&t.Status,
 		&assignedAgentID,
 		&t.Deadline,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, ErrTaskNotFound
-		}
-		return nil, fmt.Errorf("query task: %w", err)
+		&parentTaskID,
+	); err != nil {
+		return nil, err
 	}
 	if assignedAgentID.Valid {
 		t.AssignedAgentID = &assignedAgentID.String
+	}
+	if parentTaskID.Valid {
+		t.ParentTaskID = &parentTaskID.UUID
 	}
 	if err := json.Unmarshal(inputBytes, &t.Input); err != nil {
 		return nil, fmt.Errorf("unmarshal task input: %w", err)
@@ -343,11 +379,15 @@ func (s *PostgresStore) AssignTask(ctx context.Context, taskID uuid.UUID, agentI
 	return err
 }
 
-// CompleteTask marks a task as completed.
+// CompleteTask marks a task as completed and stores its output.
 func (s *PostgresStore) CompleteTask(ctx context.Context, taskID uuid.UUID, result map[string]interface{}) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE tasks SET status = 'COMPLETED', updated_at = NOW()
-		WHERE id = $1`, taskID)
+	outputJSON, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("marshal task output: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE tasks SET status = 'COMPLETED', output = $1, updated_at = NOW()
+		WHERE id = $2`, outputJSON, taskID)
 	return err
 }
 

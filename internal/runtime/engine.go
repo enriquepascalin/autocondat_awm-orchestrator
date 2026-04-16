@@ -35,7 +35,9 @@ func (e *Engine) SetRabbitMQChannel(ch *amqp091.Channel) {
 	e.rabbitCh = ch
 }
 
-// StartWorkflow creates a new workflow instance and begins execution.
+// StartWorkflow creates a new workflow instance, persists the initial event, and
+// returns the instance ID. Execution is owned entirely by the worker subprocess;
+// this method does NOT start a goroutine.
 func (e *Engine) StartWorkflow(ctx context.Context, def *model.WorkflowDefinition, tenant string, input map[string]interface{}) (uuid.UUID, error) {
 	instanceID := uuid.New()
 	now := time.Now()
@@ -66,21 +68,17 @@ func (e *Engine) StartWorkflow(ctx context.Context, def *model.WorkflowDefinitio
 	if err := e.store.AppendEvents(ctx, instanceID, 0, []store.HistoryEvent{event}); err != nil {
 		return uuid.Nil, fmt.Errorf("append start event: %w", err)
 	}
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
-		e.executeWorkflow(ctx, instanceID, def)
-	}()
 	return instanceID, nil
 }
 
 // ResumeWorkflow continues execution of a workflow from its current state.
+// Called by the worker subprocess on startup, and after timers fire.
 func (e *Engine) ResumeWorkflow(ctx context.Context, instanceID uuid.UUID, def *model.WorkflowDefinition) error {
 	e.executeWorkflow(ctx, instanceID, def)
 	return nil
 }
 
-// executeWorkflow runs the state machine until completion or blocking.
+// executeWorkflow runs the state machine until completion or blocking on tasks/timers.
 func (e *Engine) executeWorkflow(ctx context.Context, instanceID uuid.UUID, def *model.WorkflowDefinition) {
 	log.Printf("Executing workflow %s", instanceID)
 	instance, events, err := e.store.LoadInstance(ctx, instanceID)
@@ -95,6 +93,7 @@ func (e *Engine) executeWorkflow(ctx context.Context, instanceID uuid.UUID, def 
 	}
 	state := e.findState(def, currentStateName)
 	if state == nil {
+		log.Printf("State %q not found in definition %s", currentStateName, def.ID)
 		e.store.UpdateWorkflowStatus(ctx, instanceID, "FAILED")
 		return
 	}
@@ -113,17 +112,26 @@ func (e *Engine) processState(ctx context.Context, instance *store.WorkflowInsta
 	}
 }
 
-// processOperationState creates tasks for each action and publishes them to RabbitMQ if configured.
+// processOperationState creates tasks for each action and, if there are no actions,
+// advances immediately (handles end-states with empty action lists).
 func (e *Engine) processOperationState(ctx context.Context, instance *store.WorkflowInstance, events []store.HistoryEvent, state *model.OperationState, def *model.WorkflowDefinition) {
 	for i, action := range state.Actions {
 		taskID := uuid.New()
 		task := &store.Task{
 			ID:                 taskID,
 			WorkflowInstanceID: instance.ID,
+			StateName:          state.Name,
 			ActivityName:       action.Name,
-			Capabilities:       []string{}, // to be populated from metadata later
+			Capabilities:       action.Capabilities,
+			Roles:              action.Roles,
 			Input:              action.Arguments,
 			Status:             "PENDING",
+		}
+		if len(task.Capabilities) == 0 {
+			task.Capabilities = []string{}
+		}
+		if len(task.Roles) == 0 {
+			task.Roles = []string{}
 		}
 		if err := e.store.CreateTask(ctx, task); err != nil {
 			log.Printf("Failed to create task: %v", err)
@@ -135,18 +143,73 @@ func (e *Engine) processOperationState(ctx context.Context, instance *store.Work
 			SequenceNum: seq,
 			EventType:   "TaskScheduled",
 			Payload: map[string]interface{}{
-				"task_id":  taskID.String(),
-				"activity": action.Name,
+				"task_id":      taskID.String(),
+				"activity":     action.Name,
+				"capabilities": action.Capabilities,
+				"roles":        action.Roles,
+				"state":        state.Name,
 			},
 			RecordedAt: time.Now(),
 		}
 		e.store.AppendEvents(ctx, instance.ID, instance.Version, []store.HistoryEvent{event})
 
-		// Publish task to RabbitMQ if channel is available
 		if e.rabbitCh != nil {
 			e.publishTask(task)
 		}
 	}
+
+	// If this state has no actions, advance immediately — no tasks to wait for.
+	if len(state.Actions) == 0 {
+		if err := e.advanceFromState(ctx, instance, events, state, def); err != nil {
+			log.Printf("Failed to advance from state %s: %v", state.Name, err)
+		}
+	}
+}
+
+// advanceFromState either marks the workflow COMPLETED (if end state) or
+// transitions to the next state and continues execution.
+func (e *Engine) advanceFromState(ctx context.Context, instance *store.WorkflowInstance, events []store.HistoryEvent, state model.State, def *model.WorkflowDefinition) error {
+	if state.End() {
+		completedEvent := store.HistoryEvent{
+			SequenceNum: int64(len(events) + 1),
+			EventType:   "WorkflowCompleted",
+			Payload:     map[string]interface{}{"state": state.GetName()},
+			RecordedAt:  time.Now(),
+		}
+		// Non-critical: log but don't fail the completion if the event append has a conflict.
+		if err := e.store.AppendEvents(ctx, instance.ID, instance.Version, []store.HistoryEvent{completedEvent}); err != nil {
+			log.Printf("Warning: could not append WorkflowCompleted event for %s: %v", instance.ID, err)
+		}
+		if err := e.store.UpdateWorkflowStatus(ctx, instance.ID, "COMPLETED"); err != nil {
+			return fmt.Errorf("mark COMPLETED: %w", err)
+		}
+		log.Printf("Workflow %s COMPLETED at state %s", instance.ID, state.GetName())
+		return nil
+	}
+
+	nextStateName := state.GetTransition()
+	if nextStateName == "" {
+		log.Printf("State %s has no transition and is not an end state — marking FAILED", state.GetName())
+		return e.store.UpdateWorkflowStatus(ctx, instance.ID, "FAILED")
+	}
+
+	transitionEvent := store.HistoryEvent{
+		SequenceNum: int64(len(events) + 1),
+		EventType:   "StateTransitioned",
+		Payload:     map[string]interface{}{"from": state.GetName(), "to": nextStateName},
+		RecordedAt:  time.Now(),
+	}
+	if err := e.store.AppendEvents(ctx, instance.ID, instance.Version, []store.HistoryEvent{transitionEvent}); err != nil {
+		log.Printf("Warning: could not append StateTransitioned event for %s: %v", instance.ID, err)
+	}
+	if err := e.store.UpdateCurrentPhase(ctx, instance.ID, nextStateName); err != nil {
+		return fmt.Errorf("update current phase: %w", err)
+	}
+	log.Printf("Workflow %s transitioned from %s → %s", instance.ID, state.GetName(), nextStateName)
+
+	// Continue execution in this goroutine (already running in background context).
+	e.executeWorkflow(ctx, instance.ID, def)
+	return nil
 }
 
 // publishTask sends a task creation message to RabbitMQ.
@@ -156,6 +219,7 @@ func (e *Engine) publishTask(task *store.Task) {
 		"workflow_id":  task.WorkflowInstanceID.String(),
 		"activity":     task.ActivityName,
 		"capabilities": task.Capabilities,
+		"roles":        task.Roles,
 		"input":        task.Input,
 	}
 	body, err := json.Marshal(msg)
@@ -164,18 +228,16 @@ func (e *Engine) publishTask(task *store.Task) {
 		return
 	}
 
-	// Publish to a topic exchange with routing key based on capabilities.
-	// If no capabilities, use a default routing key.
 	routingKey := "task.generic"
 	if len(task.Capabilities) > 0 {
 		routingKey = "task." + task.Capabilities[0]
 	}
 
 	err = e.rabbitCh.Publish(
-		"awm.tasks",   // exchange name (must be declared elsewhere)
-		routingKey,    // routing key
-		false,         // mandatory
-		false,         // immediate
+		"awm.tasks",
+		routingKey,
+		false,
+		false,
 		amqp091.Publishing{
 			ContentType:  "application/json",
 			DeliveryMode: amqp091.Persistent,
@@ -184,7 +246,6 @@ func (e *Engine) publishTask(task *store.Task) {
 	)
 	if err != nil {
 		log.Printf("Failed to publish task to RabbitMQ: %v", err)
-		// Task is already in DB; we can retry later or leave as pending.
 	}
 }
 
@@ -207,7 +268,8 @@ func (e *Engine) processDelayState(ctx context.Context, instance *store.Workflow
 		SequenceNum: int64(len(events) + 1),
 		EventType:   "TimerScheduled",
 		Payload: map[string]interface{}{
-			"fire_at": fireAt,
+			"fire_at":    fireAt,
+			"next_state": state.Transition,
 		},
 		RecordedAt: time.Now(),
 	}
@@ -228,24 +290,26 @@ func (e *Engine) ResumeAfterTimer(ctx context.Context, timer *store.Timer) error
 	if nextStateName == "" {
 		nextStateName = def.Start
 	}
-	instance.CurrentPhase = nextStateName
-	instance.Version++
-	event := store.HistoryEvent{
+
+	timerEvent := store.HistoryEvent{
 		SequenceNum: int64(len(events) + 1),
 		EventType:   "TimerFired",
-		Payload: map[string]interface{}{
-			"timer_id": timer.ID.String(),
-		},
-		RecordedAt: time.Now(),
+		Payload:     map[string]interface{}{"timer_id": timer.ID.String(), "next_state": nextStateName},
+		RecordedAt:  time.Now(),
 	}
-	if err := e.store.AppendEvents(ctx, instance.ID, instance.Version-1, []store.HistoryEvent{event}); err != nil {
+	if err := e.store.AppendEvents(ctx, instance.ID, instance.Version, []store.HistoryEvent{timerEvent}); err != nil {
+		log.Printf("Warning: could not append TimerFired event for %s: %v", instance.ID, err)
+	}
+	if err := e.store.UpdateCurrentPhase(ctx, instance.ID, nextStateName); err != nil {
 		return err
 	}
-	go e.executeWorkflow(ctx, instance.ID, def)
+
+	// Use Background so timer goroutine outlives the timer-service tick context.
+	go e.executeWorkflow(context.Background(), instance.ID, def)
 	return nil
 }
 
-// CompleteTask marks a task as completed and resumes the workflow.
+// CompleteTask marks a task as completed and checks if the workflow can advance.
 func (e *Engine) CompleteTask(ctx context.Context, taskID uuid.UUID, result map[string]interface{}) error {
 	task, err := e.store.GetTask(ctx, taskID)
 	if err != nil {
@@ -254,10 +318,16 @@ func (e *Engine) CompleteTask(ctx context.Context, taskID uuid.UUID, result map[
 	if err := e.store.CompleteTask(ctx, taskID, result); err != nil {
 		return err
 	}
-	return e.resumeWorkflowAfterTask(ctx, task.WorkflowInstanceID)
+	// Use Background: gRPC request context may be cancelled before the async advance finishes.
+	go func() {
+		if err := e.resumeWorkflowAfterTask(context.Background(), task.WorkflowInstanceID); err != nil {
+			log.Printf("resumeWorkflowAfterTask error for instance %s: %v", task.WorkflowInstanceID, err)
+		}
+	}()
+	return nil
 }
 
-// FailTask marks a task as failed and resumes the workflow (potentially with error handling).
+// FailTask marks a task as failed and checks if the workflow can advance.
 func (e *Engine) FailTask(ctx context.Context, taskID uuid.UUID, errorDetails interface{}) error {
 	task, err := e.store.GetTask(ctx, taskID)
 	if err != nil {
@@ -266,12 +336,27 @@ func (e *Engine) FailTask(ctx context.Context, taskID uuid.UUID, errorDetails in
 	if err := e.store.FailTask(ctx, taskID, nil); err != nil {
 		return err
 	}
-	return e.resumeWorkflowAfterTask(ctx, task.WorkflowInstanceID)
+	go func() {
+		if err := e.resumeWorkflowAfterTask(context.Background(), task.WorkflowInstanceID); err != nil {
+			log.Printf("resumeWorkflowAfterTask error for instance %s: %v", task.WorkflowInstanceID, err)
+		}
+	}()
+	return nil
 }
 
-// resumeWorkflowAfterTask reloads the workflow and continues execution.
+// resumeWorkflowAfterTask checks whether all tasks for the instance are done,
+// and if so, advances to the next state (or marks COMPLETED).
 func (e *Engine) resumeWorkflowAfterTask(ctx context.Context, instanceID uuid.UUID) error {
-	instance, _, err := e.store.LoadInstance(ctx, instanceID)
+	pending, err := e.store.CountPendingTasks(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("count pending tasks: %w", err)
+	}
+	if pending > 0 {
+		// Still waiting for other tasks in this state.
+		return nil
+	}
+
+	instance, events, err := e.store.LoadInstance(ctx, instanceID)
 	if err != nil {
 		return err
 	}
@@ -279,8 +364,11 @@ func (e *Engine) resumeWorkflowAfterTask(ctx context.Context, instanceID uuid.UU
 	if err != nil {
 		return err
 	}
-	go e.executeWorkflow(ctx, instanceID, def)
-	return nil
+	state := e.findState(def, instance.CurrentPhase)
+	if state == nil {
+		return e.store.UpdateWorkflowStatus(ctx, instanceID, "FAILED")
+	}
+	return e.advanceFromState(ctx, instance, events, state, def)
 }
 
 // ClaimPendingTask assigns a pending task to an agent.
@@ -303,6 +391,7 @@ func (e *Engine) GetWorkflowState(ctx context.Context, instanceID uuid.UUID) (*s
 }
 
 // RecoverIncompleteWorkflows resumes all workflows that were left in RUNNING state.
+// Called on orchestrator startup; each instance gets its own worker subprocess via supervisor.
 func (e *Engine) RecoverIncompleteWorkflows(ctx context.Context) error {
 	instances, err := e.store.ListActiveInstances(ctx)
 	if err != nil {

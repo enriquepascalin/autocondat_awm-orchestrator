@@ -41,14 +41,18 @@ type Timer struct {
 
 // Task represents a unit of work for an agent.
 type Task struct {
-	ID                 uuid.UUID       `db:"id"`
-	WorkflowInstanceID uuid.UUID       `db:"workflow_instance_id"`
-	ActivityName       string          `db:"activity_name"`
-	Capabilities       pq.StringArray  `db:"capabilities"`
+	ID                 uuid.UUID              `db:"id"`
+	WorkflowInstanceID uuid.UUID              `db:"workflow_instance_id"`
+	StateName          string                 `db:"state_name"`   // workflow state that created this task
+	ActivityName       string                 `db:"activity_name"`
+	Capabilities       pq.StringArray         `db:"capabilities"` // agent capabilities required
+	Roles              pq.StringArray         `db:"roles"`        // human/AI roles that can perform this
 	Input              map[string]interface{} `db:"input"`
-	Status             string          `db:"status"`
-	AssignedAgentID    *string         `db:"assigned_agent_id"`
-	Deadline           *time.Time      `db:"deadline"`
+	Output             map[string]interface{} `db:"output"`       // filled on completion
+	Status             string                 `db:"status"`
+	AssignedAgentID    *string                `db:"assigned_agent_id"`
+	Deadline           *time.Time             `db:"deadline"`
+	ParentTaskID       *uuid.UUID             `db:"parent_task_id"` // for hierarchical subtasks
 }
 
 // Store defines the persistence operations required for event sourcing.
@@ -67,6 +71,12 @@ type Store interface {
 
 	// UpdateWorkflowStatus updates only the status field.
 	UpdateWorkflowStatus(ctx context.Context, instanceID uuid.UUID, status string) error
+
+	// UpdateCurrentPhase advances the workflow to the named state.
+	UpdateCurrentPhase(ctx context.Context, instanceID uuid.UUID, phase string) error
+
+	// CountPendingTasks returns the number of PENDING or ASSIGNED tasks for an instance.
+	CountPendingTasks(ctx context.Context, instanceID uuid.UUID) (int, error)
 
 	// AcquireLease attempts to claim ownership of a workflow instance.
 	AcquireLease(ctx context.Context, instanceID uuid.UUID, ownerID string, duration time.Duration) (bool, error)

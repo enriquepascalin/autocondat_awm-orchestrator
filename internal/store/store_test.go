@@ -95,14 +95,15 @@ func TestPostgresStore_GetTask(t *testing.T) {
 	workflowID := uuid.New()
 
 	rows := sqlmock.NewRows([]string{
-		"id", "workflow_instance_id", "activity_name", "capabilities",
-		"input", "status", "assigned_agent_id", "deadline",
+		"id", "workflow_instance_id", "state_name", "activity_name",
+		"capabilities", "roles", "input", "status", "assigned_agent_id", "deadline", "parent_task_id",
 	}).AddRow(
-		taskID, workflowID, "test_activity", `{test}`,
-		`{"key":"value"}`, "PENDING", nil, nil,
+		taskID, workflowID, "my-state", "test_activity",
+		`{test}`, `{}`,
+		`{"key":"value"}`, "PENDING", nil, nil, nil,
 	)
 
-	mock.ExpectQuery(`SELECT id, workflow_instance_id, activity_name, capabilities, input, status, assigned_agent_id, deadline FROM tasks WHERE id = \$1`).
+	mock.ExpectQuery(`SELECT id, workflow_instance_id, state_name, activity_name, capabilities, roles, input, status, assigned_agent_id, deadline, parent_task_id FROM tasks WHERE id = \$1`).
 		WithArgs(taskID).
 		WillReturnRows(rows)
 
@@ -111,6 +112,7 @@ func TestPostgresStore_GetTask(t *testing.T) {
 	require.NotNil(t, task)
 	assert.Equal(t, taskID, task.ID)
 	assert.Equal(t, "test_activity", task.ActivityName)
+	assert.Equal(t, "my-state", task.StateName)
 	assert.Equal(t, pq.StringArray{"test"}, task.Capabilities)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }

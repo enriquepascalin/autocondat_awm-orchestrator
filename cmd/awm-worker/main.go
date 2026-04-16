@@ -13,19 +13,17 @@ import (
 
 func main() {
 	var (
-		instanceID     string
-		workflowDefID  string
-		tenant         string
-		dbDSN          string
-		rabbitMQURL    string
-		workflowDefDir string
+		instanceID    string
+		workflowDefID string
+		tenant        string
+		dbDSN         string
+		rabbitMQURL   string
 	)
 	flag.StringVar(&instanceID, "instance-id", "", "Workflow instance ID")
 	flag.StringVar(&workflowDefID, "workflow-def-id", "", "Workflow definition ID")
 	flag.StringVar(&tenant, "tenant", "", "Tenant ID")
 	flag.StringVar(&dbDSN, "db-dsn", os.Getenv("AWM_DB_DSN"), "PostgreSQL DSN")
 	flag.StringVar(&rabbitMQURL, "rabbitmq-url", os.Getenv("AWM_RABBITMQ_URL"), "RabbitMQ URL")
-	flag.StringVar(&workflowDefDir, "workflow-def-dir", "workflows", "Directory containing workflow YAML files")
 	flag.Parse()
 
 	if instanceID == "" || workflowDefID == "" || tenant == "" {
@@ -39,12 +37,11 @@ func main() {
 	}
 
 	cfg := worker.Config{
-		InstanceID:     instanceID,
-		WorkflowDefID:  workflowDefID,
-		Tenant:         tenant,
-		DBDSN:          dbDSN,
-		RabbitMQURL:    rabbitMQURL,
-		WorkflowDefDir: workflowDefDir,
+		InstanceID:    instanceID,
+		WorkflowDefID: workflowDefID,
+		Tenant:        tenant,
+		DBDSN:         dbDSN,
+		RabbitMQURL:   rabbitMQURL,
 	}
 
 	w, err := worker.New(cfg)

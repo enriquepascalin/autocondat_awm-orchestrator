@@ -12,7 +12,6 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 
 	"github.com/enriquepascalin/awm-orchestrator/internal/model"
-	"github.com/enriquepascalin/awm-orchestrator/internal/parser"
 	"github.com/enriquepascalin/awm-orchestrator/internal/runtime"
 	"github.com/enriquepascalin/awm-orchestrator/internal/store"
 )
@@ -34,12 +33,11 @@ type Worker struct {
 
 // Config holds the configuration for creating a Worker.
 type Config struct {
-	InstanceID     string
-	WorkflowDefID  string
-	Tenant         string
-	DBDSN          string
-	RabbitMQURL    string
-	WorkflowDefDir string // directory where YAML files are stored
+	InstanceID    string
+	WorkflowDefID string
+	Tenant        string
+	DBDSN         string
+	RabbitMQURL   string
 }
 
 // New creates a new Worker instance.
@@ -54,11 +52,12 @@ func New(cfg Config) (*Worker, error) {
 		return nil, fmt.Errorf("connect to database: %w", err)
 	}
 
-	// Load workflow definition using the parser package
-	defPath := fmt.Sprintf("%s/%s.yaml", cfg.WorkflowDefDir, cfg.WorkflowDefID)
-	def, err := parser.ParseFile(defPath)
+	// Load workflow definition from the registry (DB-backed with cache + filesystem fallback).
+	registry := runtime.NewDefinitionRegistry(db)
+	def, err := registry.Get(context.Background(), cfg.WorkflowDefID)
 	if err != nil {
-		return nil, fmt.Errorf("parse workflow definition: %w", err)
+		db.Close()
+		return nil, fmt.Errorf("load workflow definition %q: %w", cfg.WorkflowDefID, err)
 	}
 
 	conn, err := amqp091.Dial(cfg.RabbitMQURL)
@@ -97,7 +96,6 @@ func New(cfg Config) (*Worker, error) {
 	}
 
 	st := store.NewPostgresStore(db)
-	registry := runtime.NewDefinitionRegistry(db)
 	engine := runtime.NewEngine(st, registry)
 
 	return &Worker{

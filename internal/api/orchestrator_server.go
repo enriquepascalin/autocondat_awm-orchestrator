@@ -172,11 +172,35 @@ func (s *OrchestratorServer) GetWorkflowState(ctx context.Context, req *awmv1.Ge
 	return &awmv1.GetWorkflowStateResponse{
 		WorkflowInstanceId:   instance.ID.String(),
 		WorkflowDefinitionId: instance.WorkflowDefinitionID,
-		Status:               awmv1.WorkflowStatus(awmv1.WorkflowStatus_value[instance.Status]),
+		Status:               workflowStatusFromString(instance.Status),
 		DimensionalState:     stateStruct,
 		CreatedAt:            timestamppb.New(instance.CreatedAt),
 		UpdatedAt:            timestamppb.New(instance.UpdatedAt),
 	}, nil
+}
+
+// workflowStatusFromString maps the internal DB status string to the proto enum.
+// The proto enum uses "WORKFLOW_STATUS_" prefix (e.g. WORKFLOW_STATUS_RUNNING),
+// while the DB stores bare values (e.g. "RUNNING").
+func workflowStatusFromString(s string) awmv1.WorkflowStatus {
+	switch s {
+	case "RUNNING":
+		return awmv1.WorkflowStatus_WORKFLOW_STATUS_RUNNING
+	case "COMPLETED":
+		return awmv1.WorkflowStatus_WORKFLOW_STATUS_COMPLETED
+	case "FAILED":
+		return awmv1.WorkflowStatus_WORKFLOW_STATUS_FAILED
+	case "CANCELED":
+		return awmv1.WorkflowStatus_WORKFLOW_STATUS_CANCELED
+	case "SUSPENDED":
+		return awmv1.WorkflowStatus_WORKFLOW_STATUS_SUSPENDED
+	case "WAITING":
+		return awmv1.WorkflowStatus_WORKFLOW_STATUS_WAITING
+	case "DEGRADED":
+		return awmv1.WorkflowStatus_WORKFLOW_STATUS_FAILED
+	default:
+		return awmv1.WorkflowStatus_WORKFLOW_STATUS_UNSPECIFIED
+	}
 }
 
 func (s *OrchestratorServer) ListWorkflows(ctx context.Context, req *awmv1.ListWorkflowsRequest) (*awmv1.ListWorkflowsResponse, error) {

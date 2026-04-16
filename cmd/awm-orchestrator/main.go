@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -60,6 +62,26 @@ func main() {
 			}
 		}
 	}
+
+	// Health check HTTP server on :9090
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.PingContext(r.Context()); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			json.NewEncoder(w).Encode(map[string]string{"status": "unhealthy", "reason": err.Error()})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	})
+	go func() {
+		log.Println("Health check HTTP server listening on :9090")
+		if err := http.ListenAndServe(":9090", httpMux); err != nil {
+			log.Printf("Health check server error: %v", err)
+		}
+	}()
 
 	grpcServer := grpc.NewServer()
 	orchestratorServer := api.NewOrchestratorServer(engine, sup)

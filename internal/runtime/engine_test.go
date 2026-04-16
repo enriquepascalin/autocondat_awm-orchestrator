@@ -46,6 +46,16 @@ func (m *MockStore) UpdateWorkflowStatus(ctx context.Context, instanceID uuid.UU
 	return args.Error(0)
 }
 
+func (m *MockStore) UpdateCurrentPhase(ctx context.Context, instanceID uuid.UUID, phase string) error {
+	args := m.Called(ctx, instanceID, phase)
+	return args.Error(0)
+}
+
+func (m *MockStore) CountPendingTasks(ctx context.Context, instanceID uuid.UUID) (int, error) {
+	args := m.Called(ctx, instanceID)
+	return args.Int(0), args.Error(1)
+}
+
 func (m *MockStore) GetTask(ctx context.Context, taskID uuid.UUID) (*store.Task, error) {
 	args := m.Called(ctx, taskID)
 	if args.Get(0) == nil {

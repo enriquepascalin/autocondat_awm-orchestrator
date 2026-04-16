@@ -57,9 +57,11 @@ type DelayState struct {
 
 // Action represents a task to be executed.
 type Action struct {
-	Name        string                 `yaml:"name"`
-	FunctionRef FunctionRef            `yaml:"functionRef"`
-	Arguments   map[string]interface{} `yaml:"arguments,omitempty"`
+	Name         string                 `yaml:"name"`
+	FunctionRef  FunctionRef            `yaml:"functionRef"`
+	Arguments    map[string]interface{} `yaml:"arguments,omitempty"`
+	Capabilities []string               `yaml:"capabilities,omitempty"` // agent capabilities required
+	Roles        []string               `yaml:"roles,omitempty"`         // human/AI roles that can perform this
 }
 
 // FunctionRef references a function definition.
