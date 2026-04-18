@@ -25,6 +25,17 @@ const (
 	Orchestrator_FailTask_FullMethodName             = "/awm.v1.Orchestrator/FailTask"
 	Orchestrator_ExtendTaskLease_FullMethodName      = "/awm.v1.Orchestrator/ExtendTaskLease"
 	Orchestrator_Heartbeat_FullMethodName            = "/awm.v1.Orchestrator/Heartbeat"
+	Orchestrator_ListTasks_FullMethodName            = "/awm.v1.Orchestrator/ListTasks"
+	Orchestrator_GetTask_FullMethodName              = "/awm.v1.Orchestrator/GetTask"
+	Orchestrator_ListMyTasks_FullMethodName          = "/awm.v1.Orchestrator/ListMyTasks"
+	Orchestrator_ClaimTask_FullMethodName            = "/awm.v1.Orchestrator/ClaimTask"
+	Orchestrator_ReleaseTask_FullMethodName          = "/awm.v1.Orchestrator/ReleaseTask"
+	Orchestrator_SubmitTaskResult_FullMethodName     = "/awm.v1.Orchestrator/SubmitTaskResult"
+	Orchestrator_SubmitTaskFailure_FullMethodName    = "/awm.v1.Orchestrator/SubmitTaskFailure"
+	Orchestrator_UpdateTaskProgress_FullMethodName   = "/awm.v1.Orchestrator/UpdateTaskProgress"
+	Orchestrator_ReassignTask_FullMethodName         = "/awm.v1.Orchestrator/ReassignTask"
+	Orchestrator_GetTaskHistory_FullMethodName       = "/awm.v1.Orchestrator/GetTaskHistory"
+	Orchestrator_WatchTask_FullMethodName            = "/awm.v1.Orchestrator/WatchTask"
 	Orchestrator_GetWorkflowState_FullMethodName     = "/awm.v1.Orchestrator/GetWorkflowState"
 	Orchestrator_ListWorkflows_FullMethodName        = "/awm.v1.Orchestrator/ListWorkflows"
 	Orchestrator_StreamWorkflowEvents_FullMethodName = "/awm.v1.Orchestrator/StreamWorkflowEvents"
@@ -33,18 +44,53 @@ const (
 // OrchestratorClient is the client API for Orchestrator service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Orchestrator is the agent execution plane.
+// Agents (human CLI, AI runners, service connectors) connect here to receive
+// tasks, report results, and observe workflow state.
 type OrchestratorClient interface {
 	// Bidirectional stream for long-lived agent connections.
+	// Agent sends: RegisterAgent, TaskResult, Heartbeat, AgentDisconnect.
+	// Server sends: TaskAssignment, SignalWorkflow, Ack.
 	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[AgentToServer, ServerToAgent], error)
-	// Unary fallback for environments where streaming is not possible.
+	// Unary fallback for environments where streaming is not possible (cron, scripts).
 	PollTask(ctx context.Context, in *PollTaskRequest, opts ...grpc.CallOption) (*PollTaskResponse, error)
+	// Mark a task complete. Prefer SubmitTaskResult for richer evidence.
 	CompleteTask(ctx context.Context, in *CompleteTaskRequest, opts ...grpc.CallOption) (*CompleteTaskResponse, error)
+	// Mark a task failed.
 	FailTask(ctx context.Context, in *FailTaskRequest, opts ...grpc.CallOption) (*FailTaskResponse, error)
+	// Request more time to complete a task.
 	ExtendTaskLease(ctx context.Context, in *ExtendTaskLeaseRequest, opts ...grpc.CallOption) (*ExtendTaskLeaseResponse, error)
+	// Keep-alive from a connected agent.
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
-	// Query workflow state (for dashboards).
+	// List tasks belonging to a workflow instance.
+	ListTasks(ctx context.Context, in *ListTasksRequest, opts ...grpc.CallOption) (*ListTasksResponse, error)
+	// Get full detail for a single task.
+	GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*GetTaskResponse, error)
+	// List tasks currently assigned to a specific agent.
+	ListMyTasks(ctx context.Context, in *ListMyTasksRequest, opts ...grpc.CallOption) (*ListMyTasksResponse, error)
+	// Claim an available task (pull model — for human CLI and on-demand runners).
+	ClaimTask(ctx context.Context, in *ClaimTaskRequest, opts ...grpc.CallOption) (*ClaimTaskResponse, error)
+	// Release a claimed task back to the pool without completing it.
+	ReleaseTask(ctx context.Context, in *ReleaseTaskRequest, opts ...grpc.CallOption) (*ReleaseTaskResponse, error)
+	// Submit task completion with full evidence payload.
+	// Returns what the workflow engine did next (advanced, completed, retrying…).
+	SubmitTaskResult(ctx context.Context, in *SubmitTaskResultRequest, opts ...grpc.CallOption) (*SubmitTaskResultResponse, error)
+	// Submit task failure with reason and optional retry hint.
+	SubmitTaskFailure(ctx context.Context, in *SubmitTaskFailureRequest, opts ...grpc.CallOption) (*SubmitTaskFailureResponse, error)
+	// Post an intermediate progress update while a task is still in progress.
+	UpdateTaskProgress(ctx context.Context, in *UpdateTaskProgressRequest, opts ...grpc.CallOption) (*UpdateTaskProgressResponse, error)
+	// Escalate or reassign a task to a different agent.
+	ReassignTask(ctx context.Context, in *ReassignTaskRequest, opts ...grpc.CallOption) (*ReassignTaskResponse, error)
+	// Get the full audit trail for a task (every status change, every submission).
+	GetTaskHistory(ctx context.Context, in *GetTaskHistoryRequest, opts ...grpc.CallOption) (*GetTaskHistoryResponse, error)
+	// Stream live status changes for a specific task.
+	WatchTask(ctx context.Context, in *WatchTaskRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskStatusEvent], error)
+	// Get the current state of a workflow instance.
 	GetWorkflowState(ctx context.Context, in *GetWorkflowStateRequest, opts ...grpc.CallOption) (*GetWorkflowStateResponse, error)
+	// List workflow instances with optional filters.
 	ListWorkflows(ctx context.Context, in *ListWorkflowsRequest, opts ...grpc.CallOption) (*ListWorkflowsResponse, error)
+	// Stream live events for a workflow instance (event sourcing replay + live).
 	StreamWorkflowEvents(ctx context.Context, in *StreamWorkflowEventsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkflowEvent], error)
 }
 
@@ -119,6 +165,125 @@ func (c *orchestratorClient) Heartbeat(ctx context.Context, in *HeartbeatRequest
 	return out, nil
 }
 
+func (c *orchestratorClient) ListTasks(ctx context.Context, in *ListTasksRequest, opts ...grpc.CallOption) (*ListTasksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTasksResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_ListTasks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*GetTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTaskResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_GetTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) ListMyTasks(ctx context.Context, in *ListMyTasksRequest, opts ...grpc.CallOption) (*ListMyTasksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMyTasksResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_ListMyTasks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) ClaimTask(ctx context.Context, in *ClaimTaskRequest, opts ...grpc.CallOption) (*ClaimTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClaimTaskResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_ClaimTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) ReleaseTask(ctx context.Context, in *ReleaseTaskRequest, opts ...grpc.CallOption) (*ReleaseTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReleaseTaskResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_ReleaseTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) SubmitTaskResult(ctx context.Context, in *SubmitTaskResultRequest, opts ...grpc.CallOption) (*SubmitTaskResultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitTaskResultResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_SubmitTaskResult_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) SubmitTaskFailure(ctx context.Context, in *SubmitTaskFailureRequest, opts ...grpc.CallOption) (*SubmitTaskFailureResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitTaskFailureResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_SubmitTaskFailure_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) UpdateTaskProgress(ctx context.Context, in *UpdateTaskProgressRequest, opts ...grpc.CallOption) (*UpdateTaskProgressResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateTaskProgressResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_UpdateTaskProgress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) ReassignTask(ctx context.Context, in *ReassignTaskRequest, opts ...grpc.CallOption) (*ReassignTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReassignTaskResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_ReassignTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) GetTaskHistory(ctx context.Context, in *GetTaskHistoryRequest, opts ...grpc.CallOption) (*GetTaskHistoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTaskHistoryResponse)
+	err := c.cc.Invoke(ctx, Orchestrator_GetTaskHistory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *orchestratorClient) WatchTask(ctx context.Context, in *WatchTaskRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskStatusEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Orchestrator_ServiceDesc.Streams[1], Orchestrator_WatchTask_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WatchTaskRequest, TaskStatusEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Orchestrator_WatchTaskClient = grpc.ServerStreamingClient[TaskStatusEvent]
+
 func (c *orchestratorClient) GetWorkflowState(ctx context.Context, in *GetWorkflowStateRequest, opts ...grpc.CallOption) (*GetWorkflowStateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetWorkflowStateResponse)
@@ -141,7 +306,7 @@ func (c *orchestratorClient) ListWorkflows(ctx context.Context, in *ListWorkflow
 
 func (c *orchestratorClient) StreamWorkflowEvents(ctx context.Context, in *StreamWorkflowEventsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WorkflowEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &Orchestrator_ServiceDesc.Streams[1], Orchestrator_StreamWorkflowEvents_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &Orchestrator_ServiceDesc.Streams[2], Orchestrator_StreamWorkflowEvents_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -161,18 +326,53 @@ type Orchestrator_StreamWorkflowEventsClient = grpc.ServerStreamingClient[Workfl
 // OrchestratorServer is the server API for Orchestrator service.
 // All implementations must embed UnimplementedOrchestratorServer
 // for forward compatibility.
+//
+// Orchestrator is the agent execution plane.
+// Agents (human CLI, AI runners, service connectors) connect here to receive
+// tasks, report results, and observe workflow state.
 type OrchestratorServer interface {
 	// Bidirectional stream for long-lived agent connections.
+	// Agent sends: RegisterAgent, TaskResult, Heartbeat, AgentDisconnect.
+	// Server sends: TaskAssignment, SignalWorkflow, Ack.
 	Connect(grpc.BidiStreamingServer[AgentToServer, ServerToAgent]) error
-	// Unary fallback for environments where streaming is not possible.
+	// Unary fallback for environments where streaming is not possible (cron, scripts).
 	PollTask(context.Context, *PollTaskRequest) (*PollTaskResponse, error)
+	// Mark a task complete. Prefer SubmitTaskResult for richer evidence.
 	CompleteTask(context.Context, *CompleteTaskRequest) (*CompleteTaskResponse, error)
+	// Mark a task failed.
 	FailTask(context.Context, *FailTaskRequest) (*FailTaskResponse, error)
+	// Request more time to complete a task.
 	ExtendTaskLease(context.Context, *ExtendTaskLeaseRequest) (*ExtendTaskLeaseResponse, error)
+	// Keep-alive from a connected agent.
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
-	// Query workflow state (for dashboards).
+	// List tasks belonging to a workflow instance.
+	ListTasks(context.Context, *ListTasksRequest) (*ListTasksResponse, error)
+	// Get full detail for a single task.
+	GetTask(context.Context, *GetTaskRequest) (*GetTaskResponse, error)
+	// List tasks currently assigned to a specific agent.
+	ListMyTasks(context.Context, *ListMyTasksRequest) (*ListMyTasksResponse, error)
+	// Claim an available task (pull model — for human CLI and on-demand runners).
+	ClaimTask(context.Context, *ClaimTaskRequest) (*ClaimTaskResponse, error)
+	// Release a claimed task back to the pool without completing it.
+	ReleaseTask(context.Context, *ReleaseTaskRequest) (*ReleaseTaskResponse, error)
+	// Submit task completion with full evidence payload.
+	// Returns what the workflow engine did next (advanced, completed, retrying…).
+	SubmitTaskResult(context.Context, *SubmitTaskResultRequest) (*SubmitTaskResultResponse, error)
+	// Submit task failure with reason and optional retry hint.
+	SubmitTaskFailure(context.Context, *SubmitTaskFailureRequest) (*SubmitTaskFailureResponse, error)
+	// Post an intermediate progress update while a task is still in progress.
+	UpdateTaskProgress(context.Context, *UpdateTaskProgressRequest) (*UpdateTaskProgressResponse, error)
+	// Escalate or reassign a task to a different agent.
+	ReassignTask(context.Context, *ReassignTaskRequest) (*ReassignTaskResponse, error)
+	// Get the full audit trail for a task (every status change, every submission).
+	GetTaskHistory(context.Context, *GetTaskHistoryRequest) (*GetTaskHistoryResponse, error)
+	// Stream live status changes for a specific task.
+	WatchTask(*WatchTaskRequest, grpc.ServerStreamingServer[TaskStatusEvent]) error
+	// Get the current state of a workflow instance.
 	GetWorkflowState(context.Context, *GetWorkflowStateRequest) (*GetWorkflowStateResponse, error)
+	// List workflow instances with optional filters.
 	ListWorkflows(context.Context, *ListWorkflowsRequest) (*ListWorkflowsResponse, error)
+	// Stream live events for a workflow instance (event sourcing replay + live).
 	StreamWorkflowEvents(*StreamWorkflowEventsRequest, grpc.ServerStreamingServer[WorkflowEvent]) error
 	mustEmbedUnimplementedOrchestratorServer()
 }
@@ -201,6 +401,39 @@ func (UnimplementedOrchestratorServer) ExtendTaskLease(context.Context, *ExtendT
 }
 func (UnimplementedOrchestratorServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
+}
+func (UnimplementedOrchestratorServer) ListTasks(context.Context, *ListTasksRequest) (*ListTasksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListTasks not implemented")
+}
+func (UnimplementedOrchestratorServer) GetTask(context.Context, *GetTaskRequest) (*GetTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTask not implemented")
+}
+func (UnimplementedOrchestratorServer) ListMyTasks(context.Context, *ListMyTasksRequest) (*ListMyTasksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListMyTasks not implemented")
+}
+func (UnimplementedOrchestratorServer) ClaimTask(context.Context, *ClaimTaskRequest) (*ClaimTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClaimTask not implemented")
+}
+func (UnimplementedOrchestratorServer) ReleaseTask(context.Context, *ReleaseTaskRequest) (*ReleaseTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReleaseTask not implemented")
+}
+func (UnimplementedOrchestratorServer) SubmitTaskResult(context.Context, *SubmitTaskResultRequest) (*SubmitTaskResultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitTaskResult not implemented")
+}
+func (UnimplementedOrchestratorServer) SubmitTaskFailure(context.Context, *SubmitTaskFailureRequest) (*SubmitTaskFailureResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SubmitTaskFailure not implemented")
+}
+func (UnimplementedOrchestratorServer) UpdateTaskProgress(context.Context, *UpdateTaskProgressRequest) (*UpdateTaskProgressResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateTaskProgress not implemented")
+}
+func (UnimplementedOrchestratorServer) ReassignTask(context.Context, *ReassignTaskRequest) (*ReassignTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReassignTask not implemented")
+}
+func (UnimplementedOrchestratorServer) GetTaskHistory(context.Context, *GetTaskHistoryRequest) (*GetTaskHistoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTaskHistory not implemented")
+}
+func (UnimplementedOrchestratorServer) WatchTask(*WatchTaskRequest, grpc.ServerStreamingServer[TaskStatusEvent]) error {
+	return status.Error(codes.Unimplemented, "method WatchTask not implemented")
 }
 func (UnimplementedOrchestratorServer) GetWorkflowState(context.Context, *GetWorkflowStateRequest) (*GetWorkflowStateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetWorkflowState not implemented")
@@ -329,6 +562,197 @@ func _Orchestrator_Heartbeat_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Orchestrator_ListTasks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTasksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).ListTasks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_ListTasks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).ListTasks(ctx, req.(*ListTasksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_GetTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).GetTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_GetTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).GetTask(ctx, req.(*GetTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_ListMyTasks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMyTasksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).ListMyTasks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_ListMyTasks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).ListMyTasks(ctx, req.(*ListMyTasksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_ClaimTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClaimTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).ClaimTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_ClaimTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).ClaimTask(ctx, req.(*ClaimTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_ReleaseTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReleaseTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).ReleaseTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_ReleaseTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).ReleaseTask(ctx, req.(*ReleaseTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_SubmitTaskResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitTaskResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).SubmitTaskResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_SubmitTaskResult_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).SubmitTaskResult(ctx, req.(*SubmitTaskResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_SubmitTaskFailure_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitTaskFailureRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).SubmitTaskFailure(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_SubmitTaskFailure_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).SubmitTaskFailure(ctx, req.(*SubmitTaskFailureRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_UpdateTaskProgress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateTaskProgressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).UpdateTaskProgress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_UpdateTaskProgress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).UpdateTaskProgress(ctx, req.(*UpdateTaskProgressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_ReassignTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReassignTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).ReassignTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_ReassignTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).ReassignTask(ctx, req.(*ReassignTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_GetTaskHistory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTaskHistoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrchestratorServer).GetTaskHistory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Orchestrator_GetTaskHistory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrchestratorServer).GetTaskHistory(ctx, req.(*GetTaskHistoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Orchestrator_WatchTask_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WatchTaskRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(OrchestratorServer).WatchTask(m, &grpc.GenericServerStream[WatchTaskRequest, TaskStatusEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Orchestrator_WatchTaskServer = grpc.ServerStreamingServer[TaskStatusEvent]
+
 func _Orchestrator_GetWorkflowState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetWorkflowStateRequest)
 	if err := dec(in); err != nil {
@@ -404,6 +828,46 @@ var Orchestrator_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Orchestrator_Heartbeat_Handler,
 		},
 		{
+			MethodName: "ListTasks",
+			Handler:    _Orchestrator_ListTasks_Handler,
+		},
+		{
+			MethodName: "GetTask",
+			Handler:    _Orchestrator_GetTask_Handler,
+		},
+		{
+			MethodName: "ListMyTasks",
+			Handler:    _Orchestrator_ListMyTasks_Handler,
+		},
+		{
+			MethodName: "ClaimTask",
+			Handler:    _Orchestrator_ClaimTask_Handler,
+		},
+		{
+			MethodName: "ReleaseTask",
+			Handler:    _Orchestrator_ReleaseTask_Handler,
+		},
+		{
+			MethodName: "SubmitTaskResult",
+			Handler:    _Orchestrator_SubmitTaskResult_Handler,
+		},
+		{
+			MethodName: "SubmitTaskFailure",
+			Handler:    _Orchestrator_SubmitTaskFailure_Handler,
+		},
+		{
+			MethodName: "UpdateTaskProgress",
+			Handler:    _Orchestrator_UpdateTaskProgress_Handler,
+		},
+		{
+			MethodName: "ReassignTask",
+			Handler:    _Orchestrator_ReassignTask_Handler,
+		},
+		{
+			MethodName: "GetTaskHistory",
+			Handler:    _Orchestrator_GetTaskHistory_Handler,
+		},
+		{
 			MethodName: "GetWorkflowState",
 			Handler:    _Orchestrator_GetWorkflowState_Handler,
 		},
@@ -418,6 +882,11 @@ var Orchestrator_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _Orchestrator_Connect_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "WatchTask",
+			Handler:       _Orchestrator_WatchTask_Handler,
+			ServerStreams: true,
 		},
 		{
 			StreamName:    "StreamWorkflowEvents",

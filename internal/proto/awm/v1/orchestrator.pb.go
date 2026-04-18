@@ -23,6 +23,68 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// What the workflow engine did after a task was resolved.
+type WorkflowAdvancementEffect int32
+
+const (
+	WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_UNSPECIFIED   WorkflowAdvancementEffect = 0
+	WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_TASKS_PENDING WorkflowAdvancementEffect = 1 // more tasks remain in the same state
+	WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_ADVANCED      WorkflowAdvancementEffect = 2 // workflow moved to the next state
+	WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_COMPLETED     WorkflowAdvancementEffect = 3 // workflow instance is now COMPLETED
+	WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_FAILED        WorkflowAdvancementEffect = 4 // workflow instance is now FAILED
+	WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_RETRYING      WorkflowAdvancementEffect = 5 // task will be retried
+	WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_WAITING       WorkflowAdvancementEffect = 6 // workflow is waiting for a signal or timer
+)
+
+// Enum value maps for WorkflowAdvancementEffect.
+var (
+	WorkflowAdvancementEffect_name = map[int32]string{
+		0: "WORKFLOW_ADVANCEMENT_EFFECT_UNSPECIFIED",
+		1: "WORKFLOW_ADVANCEMENT_EFFECT_TASKS_PENDING",
+		2: "WORKFLOW_ADVANCEMENT_EFFECT_ADVANCED",
+		3: "WORKFLOW_ADVANCEMENT_EFFECT_COMPLETED",
+		4: "WORKFLOW_ADVANCEMENT_EFFECT_FAILED",
+		5: "WORKFLOW_ADVANCEMENT_EFFECT_RETRYING",
+		6: "WORKFLOW_ADVANCEMENT_EFFECT_WAITING",
+	}
+	WorkflowAdvancementEffect_value = map[string]int32{
+		"WORKFLOW_ADVANCEMENT_EFFECT_UNSPECIFIED":   0,
+		"WORKFLOW_ADVANCEMENT_EFFECT_TASKS_PENDING": 1,
+		"WORKFLOW_ADVANCEMENT_EFFECT_ADVANCED":      2,
+		"WORKFLOW_ADVANCEMENT_EFFECT_COMPLETED":     3,
+		"WORKFLOW_ADVANCEMENT_EFFECT_FAILED":        4,
+		"WORKFLOW_ADVANCEMENT_EFFECT_RETRYING":      5,
+		"WORKFLOW_ADVANCEMENT_EFFECT_WAITING":       6,
+	}
+)
+
+func (x WorkflowAdvancementEffect) Enum() *WorkflowAdvancementEffect {
+	p := new(WorkflowAdvancementEffect)
+	*p = x
+	return p
+}
+
+func (x WorkflowAdvancementEffect) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WorkflowAdvancementEffect) Descriptor() protoreflect.EnumDescriptor {
+	return file_awm_v1_orchestrator_proto_enumTypes[0].Descriptor()
+}
+
+func (WorkflowAdvancementEffect) Type() protoreflect.EnumType {
+	return &file_awm_v1_orchestrator_proto_enumTypes[0]
+}
+
+func (x WorkflowAdvancementEffect) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WorkflowAdvancementEffect.Descriptor instead.
+func (WorkflowAdvancementEffect) EnumDescriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{0}
+}
+
 type WorkflowStatus int32
 
 const (
@@ -68,11 +130,11 @@ func (x WorkflowStatus) String() string {
 }
 
 func (WorkflowStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_awm_v1_orchestrator_proto_enumTypes[0].Descriptor()
+	return file_awm_v1_orchestrator_proto_enumTypes[1].Descriptor()
 }
 
 func (WorkflowStatus) Type() protoreflect.EnumType {
-	return &file_awm_v1_orchestrator_proto_enumTypes[0]
+	return &file_awm_v1_orchestrator_proto_enumTypes[1]
 }
 
 func (x WorkflowStatus) Number() protoreflect.EnumNumber {
@@ -81,7 +143,7 @@ func (x WorkflowStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use WorkflowStatus.Descriptor instead.
 func (WorkflowStatus) EnumDescriptor() ([]byte, []int) {
-	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{0}
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{1}
 }
 
 type AgentToServer struct {
@@ -300,8 +362,8 @@ type RegisterAgent struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	AgentId            string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	Tenant             string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	AgentType          string                 `protobuf:"bytes,3,opt,name=agent_type,json=agentType,proto3" json:"agent_type,omitempty"` // "human_cli", "ai_runner", "service"
-	Capabilities       []string               `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`            // e.g., ["estimate_story", "write_code"]
+	AgentType          string                 `protobuf:"bytes,3,opt,name=agent_type,json=agentType,proto3" json:"agent_type,omitempty"` // "human", "ai", "service"
+	Capabilities       []string               `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	Labels             map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	MaxConcurrentTasks int32                  `protobuf:"varint,6,opt,name=max_concurrent_tasks,json=maxConcurrentTasks,proto3" json:"max_concurrent_tasks,omitempty"`
 	unknownFields      protoimpl.UnknownFields
@@ -1250,6 +1312,1652 @@ func (x *HeartbeatResponse) GetOk() bool {
 	return false
 }
 
+// TaskEvidence is the structured proof that a task was performed.
+// The workflow engine only acts on success/failure — evidence is stored
+// verbatim for audit, human review, and downstream consumers.
+type TaskEvidence struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Human-readable one-line summary. Always required.
+	Summary string `protobuf:"bytes,1,opt,name=summary,proto3" json:"summary,omitempty"`
+	// Arbitrary structured data (any JSON object).
+	Data *structpb.Struct `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	// Zero or more references to external artifacts produced by the task.
+	Artifacts []*ArtifactRef `protobuf:"bytes,3,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
+	// ID of the agent that produced this evidence.
+	AgentId string `protobuf:"bytes,4,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	// When the evidence was submitted.
+	SubmittedAt   *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=submitted_at,json=submittedAt,proto3" json:"submitted_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TaskEvidence) Reset() {
+	*x = TaskEvidence{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskEvidence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskEvidence) ProtoMessage() {}
+
+func (x *TaskEvidence) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TaskEvidence.ProtoReflect.Descriptor instead.
+func (*TaskEvidence) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *TaskEvidence) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *TaskEvidence) GetData() *structpb.Struct {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *TaskEvidence) GetArtifacts() []*ArtifactRef {
+	if x != nil {
+		return x.Artifacts
+	}
+	return nil
+}
+
+func (x *TaskEvidence) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *TaskEvidence) GetSubmittedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SubmittedAt
+	}
+	return nil
+}
+
+// ArtifactRef points to an external artifact produced by a task.
+// The orchestrator stores the reference; it never fetches or validates the URI.
+type ArtifactRef struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Semantic type: "url", "commit", "document", "image", "log", "file", etc.
+	Type string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	// Locator: HTTP URL, git commit hash, S3 URI, document ID, etc.
+	Uri string `protobuf:"bytes,2,opt,name=uri,proto3" json:"uri,omitempty"`
+	// Optional human-readable label.
+	Label string `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`
+	// Optional free-form metadata (e.g. {"branch": "main", "repo": "acme/api"}).
+	Metadata      map[string]string `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ArtifactRef) Reset() {
+	*x = ArtifactRef{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArtifactRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArtifactRef) ProtoMessage() {}
+
+func (x *ArtifactRef) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArtifactRef.ProtoReflect.Descriptor instead.
+func (*ArtifactRef) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ArtifactRef) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetUri() string {
+	if x != nil {
+		return x.Uri
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetMetadata() map[string]string {
+	if x != nil {
+		return x.Metadata
+	}
+	return nil
+}
+
+type ListTasksRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowInstanceId string                 `protobuf:"bytes,1,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
+	StatusFilter       string                 `protobuf:"bytes,2,opt,name=status_filter,json=statusFilter,proto3" json:"status_filter,omitempty"` // "PENDING", "ASSIGNED", "COMPLETED", "FAILED", or empty for all
+	PageSize           int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken          string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *ListTasksRequest) Reset() {
+	*x = ListTasksRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTasksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTasksRequest) ProtoMessage() {}
+
+func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTasksRequest.ProtoReflect.Descriptor instead.
+func (*ListTasksRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ListTasksRequest) GetWorkflowInstanceId() string {
+	if x != nil {
+		return x.WorkflowInstanceId
+	}
+	return ""
+}
+
+func (x *ListTasksRequest) GetStatusFilter() string {
+	if x != nil {
+		return x.StatusFilter
+	}
+	return ""
+}
+
+func (x *ListTasksRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListTasksRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListTasksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tasks         []*TaskSummary         `protobuf:"bytes,1,rep,name=tasks,proto3" json:"tasks,omitempty"`
+	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTasksResponse) Reset() {
+	*x = ListTasksResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTasksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTasksResponse) ProtoMessage() {}
+
+func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTasksResponse.ProtoReflect.Descriptor instead.
+func (*ListTasksResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *ListTasksResponse) GetTasks() []*TaskSummary {
+	if x != nil {
+		return x.Tasks
+	}
+	return nil
+}
+
+func (x *ListTasksResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+type TaskSummary struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	TaskId             string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	WorkflowInstanceId string                 `protobuf:"bytes,2,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
+	StateName          string                 `protobuf:"bytes,3,opt,name=state_name,json=stateName,proto3" json:"state_name,omitempty"`
+	ActivityName       string                 `protobuf:"bytes,4,opt,name=activity_name,json=activityName,proto3" json:"activity_name,omitempty"`
+	Status             string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	AssignedAgentId    string                 `protobuf:"bytes,6,opt,name=assigned_agent_id,json=assignedAgentId,proto3" json:"assigned_agent_id,omitempty"`
+	Deadline           *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *TaskSummary) Reset() {
+	*x = TaskSummary{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskSummary) ProtoMessage() {}
+
+func (x *TaskSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TaskSummary.ProtoReflect.Descriptor instead.
+func (*TaskSummary) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *TaskSummary) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *TaskSummary) GetWorkflowInstanceId() string {
+	if x != nil {
+		return x.WorkflowInstanceId
+	}
+	return ""
+}
+
+func (x *TaskSummary) GetStateName() string {
+	if x != nil {
+		return x.StateName
+	}
+	return ""
+}
+
+func (x *TaskSummary) GetActivityName() string {
+	if x != nil {
+		return x.ActivityName
+	}
+	return ""
+}
+
+func (x *TaskSummary) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *TaskSummary) GetAssignedAgentId() string {
+	if x != nil {
+		return x.AssignedAgentId
+	}
+	return ""
+}
+
+func (x *TaskSummary) GetDeadline() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Deadline
+	}
+	return nil
+}
+
+func (x *TaskSummary) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+type GetTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTaskRequest) Reset() {
+	*x = GetTaskRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTaskRequest) ProtoMessage() {}
+
+func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTaskRequest.ProtoReflect.Descriptor instead.
+func (*GetTaskRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *GetTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+type GetTaskResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	TaskId             string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	WorkflowInstanceId string                 `protobuf:"bytes,2,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
+	StateName          string                 `protobuf:"bytes,3,opt,name=state_name,json=stateName,proto3" json:"state_name,omitempty"`
+	ActivityName       string                 `protobuf:"bytes,4,opt,name=activity_name,json=activityName,proto3" json:"activity_name,omitempty"`
+	Capabilities       []string               `protobuf:"bytes,5,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	Roles              []string               `protobuf:"bytes,6,rep,name=roles,proto3" json:"roles,omitempty"`
+	Input              *structpb.Struct       `protobuf:"bytes,7,opt,name=input,proto3" json:"input,omitempty"`
+	Output             *structpb.Struct       `protobuf:"bytes,8,opt,name=output,proto3" json:"output,omitempty"`
+	Status             string                 `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"`
+	AssignedAgentId    string                 `protobuf:"bytes,10,opt,name=assigned_agent_id,json=assignedAgentId,proto3" json:"assigned_agent_id,omitempty"`
+	Deadline           *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	CreatedAt          *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Evidence           *TaskEvidence          `protobuf:"bytes,14,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *GetTaskResponse) Reset() {
+	*x = GetTaskResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTaskResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTaskResponse) ProtoMessage() {}
+
+func (x *GetTaskResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTaskResponse.ProtoReflect.Descriptor instead.
+func (*GetTaskResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *GetTaskResponse) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *GetTaskResponse) GetWorkflowInstanceId() string {
+	if x != nil {
+		return x.WorkflowInstanceId
+	}
+	return ""
+}
+
+func (x *GetTaskResponse) GetStateName() string {
+	if x != nil {
+		return x.StateName
+	}
+	return ""
+}
+
+func (x *GetTaskResponse) GetActivityName() string {
+	if x != nil {
+		return x.ActivityName
+	}
+	return ""
+}
+
+func (x *GetTaskResponse) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *GetTaskResponse) GetRoles() []string {
+	if x != nil {
+		return x.Roles
+	}
+	return nil
+}
+
+func (x *GetTaskResponse) GetInput() *structpb.Struct {
+	if x != nil {
+		return x.Input
+	}
+	return nil
+}
+
+func (x *GetTaskResponse) GetOutput() *structpb.Struct {
+	if x != nil {
+		return x.Output
+	}
+	return nil
+}
+
+func (x *GetTaskResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *GetTaskResponse) GetAssignedAgentId() string {
+	if x != nil {
+		return x.AssignedAgentId
+	}
+	return ""
+}
+
+func (x *GetTaskResponse) GetDeadline() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Deadline
+	}
+	return nil
+}
+
+func (x *GetTaskResponse) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *GetTaskResponse) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *GetTaskResponse) GetEvidence() *TaskEvidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
+type ListMyTasksRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Tenant        string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	StatusFilter  string                 `protobuf:"bytes,3,opt,name=status_filter,json=statusFilter,proto3" json:"status_filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMyTasksRequest) Reset() {
+	*x = ListMyTasksRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMyTasksRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMyTasksRequest) ProtoMessage() {}
+
+func (x *ListMyTasksRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMyTasksRequest.ProtoReflect.Descriptor instead.
+func (*ListMyTasksRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *ListMyTasksRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ListMyTasksRequest) GetTenant() string {
+	if x != nil {
+		return x.Tenant
+	}
+	return ""
+}
+
+func (x *ListMyTasksRequest) GetStatusFilter() string {
+	if x != nil {
+		return x.StatusFilter
+	}
+	return ""
+}
+
+type ListMyTasksResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tasks         []*TaskSummary         `protobuf:"bytes,1,rep,name=tasks,proto3" json:"tasks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMyTasksResponse) Reset() {
+	*x = ListMyTasksResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMyTasksResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMyTasksResponse) ProtoMessage() {}
+
+func (x *ListMyTasksResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMyTasksResponse.ProtoReflect.Descriptor instead.
+func (*ListMyTasksResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *ListMyTasksResponse) GetTasks() []*TaskSummary {
+	if x != nil {
+		return x.Tasks
+	}
+	return nil
+}
+
+type ClaimTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClaimTaskRequest) Reset() {
+	*x = ClaimTaskRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClaimTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClaimTaskRequest) ProtoMessage() {}
+
+func (x *ClaimTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClaimTaskRequest.ProtoReflect.Descriptor instead.
+func (*ClaimTaskRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ClaimTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ClaimTaskRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+type ClaimTaskResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Claimed       bool                   `protobuf:"varint,1,opt,name=claimed,proto3" json:"claimed,omitempty"`
+	Task          *TaskAssignment        `protobuf:"bytes,2,opt,name=task,proto3" json:"task,omitempty"`     // populated when claimed = true
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"` // populated when claimed = false (already taken, etc.)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClaimTaskResponse) Reset() {
+	*x = ClaimTaskResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClaimTaskResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClaimTaskResponse) ProtoMessage() {}
+
+func (x *ClaimTaskResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClaimTaskResponse.ProtoReflect.Descriptor instead.
+func (*ClaimTaskResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ClaimTaskResponse) GetClaimed() bool {
+	if x != nil {
+		return x.Claimed
+	}
+	return false
+}
+
+func (x *ClaimTaskResponse) GetTask() *TaskAssignment {
+	if x != nil {
+		return x.Task
+	}
+	return nil
+}
+
+func (x *ClaimTaskResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type ReleaseTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseTaskRequest) Reset() {
+	*x = ReleaseTaskRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseTaskRequest) ProtoMessage() {}
+
+func (x *ReleaseTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseTaskRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseTaskRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ReleaseTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ReleaseTaskRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *ReleaseTaskRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type ReleaseTaskResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Released      bool                   `protobuf:"varint,1,opt,name=released,proto3" json:"released,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseTaskResponse) Reset() {
+	*x = ReleaseTaskResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseTaskResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseTaskResponse) ProtoMessage() {}
+
+func (x *ReleaseTaskResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseTaskResponse.ProtoReflect.Descriptor instead.
+func (*ReleaseTaskResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *ReleaseTaskResponse) GetReleased() bool {
+	if x != nil {
+		return x.Released
+	}
+	return false
+}
+
+type SubmitTaskResultRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Evidence      *TaskEvidence          `protobuf:"bytes,3,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitTaskResultRequest) Reset() {
+	*x = SubmitTaskResultRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitTaskResultRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitTaskResultRequest) ProtoMessage() {}
+
+func (x *SubmitTaskResultRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitTaskResultRequest.ProtoReflect.Descriptor instead.
+func (*SubmitTaskResultRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *SubmitTaskResultRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *SubmitTaskResultRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *SubmitTaskResultRequest) GetEvidence() *TaskEvidence {
+	if x != nil {
+		return x.Evidence
+	}
+	return nil
+}
+
+type SubmitTaskResultResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Accepted      bool                      `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Effect        WorkflowAdvancementEffect `protobuf:"varint,2,opt,name=effect,proto3,enum=awm.v1.WorkflowAdvancementEffect" json:"effect,omitempty"` // what the engine did next
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitTaskResultResponse) Reset() {
+	*x = SubmitTaskResultResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitTaskResultResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitTaskResultResponse) ProtoMessage() {}
+
+func (x *SubmitTaskResultResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitTaskResultResponse.ProtoReflect.Descriptor instead.
+func (*SubmitTaskResultResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *SubmitTaskResultResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *SubmitTaskResultResponse) GetEffect() WorkflowAdvancementEffect {
+	if x != nil {
+		return x.Effect
+	}
+	return WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_UNSPECIFIED
+}
+
+type SubmitTaskFailureRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Error         *TaskError             `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	Retryable     bool                   `protobuf:"varint,4,opt,name=retryable,proto3" json:"retryable,omitempty"` // hint to the engine: should this task be retried?
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitTaskFailureRequest) Reset() {
+	*x = SubmitTaskFailureRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitTaskFailureRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitTaskFailureRequest) ProtoMessage() {}
+
+func (x *SubmitTaskFailureRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitTaskFailureRequest.ProtoReflect.Descriptor instead.
+func (*SubmitTaskFailureRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *SubmitTaskFailureRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *SubmitTaskFailureRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *SubmitTaskFailureRequest) GetError() *TaskError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *SubmitTaskFailureRequest) GetRetryable() bool {
+	if x != nil {
+		return x.Retryable
+	}
+	return false
+}
+
+type SubmitTaskFailureResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Accepted      bool                      `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	Effect        WorkflowAdvancementEffect `protobuf:"varint,2,opt,name=effect,proto3,enum=awm.v1.WorkflowAdvancementEffect" json:"effect,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitTaskFailureResponse) Reset() {
+	*x = SubmitTaskFailureResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitTaskFailureResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitTaskFailureResponse) ProtoMessage() {}
+
+func (x *SubmitTaskFailureResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitTaskFailureResponse.ProtoReflect.Descriptor instead.
+func (*SubmitTaskFailureResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *SubmitTaskFailureResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *SubmitTaskFailureResponse) GetEffect() WorkflowAdvancementEffect {
+	if x != nil {
+		return x.Effect
+	}
+	return WorkflowAdvancementEffect_WORKFLOW_ADVANCEMENT_EFFECT_UNSPECIFIED
+}
+
+type UpdateTaskProgressRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	AgentId       string                 `protobuf:"bytes,2,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`  // free-text progress note
+	Data          *structpb.Struct       `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`        // optional partial structured output
+	Percent       int32                  `protobuf:"varint,5,opt,name=percent,proto3" json:"percent,omitempty"` // 0–100, optional
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateTaskProgressRequest) Reset() {
+	*x = UpdateTaskProgressRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateTaskProgressRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateTaskProgressRequest) ProtoMessage() {}
+
+func (x *UpdateTaskProgressRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateTaskProgressRequest.ProtoReflect.Descriptor instead.
+func (*UpdateTaskProgressRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *UpdateTaskProgressRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *UpdateTaskProgressRequest) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *UpdateTaskProgressRequest) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *UpdateTaskProgressRequest) GetData() *structpb.Struct {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *UpdateTaskProgressRequest) GetPercent() int32 {
+	if x != nil {
+		return x.Percent
+	}
+	return 0
+}
+
+type UpdateTaskProgressResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateTaskProgressResponse) Reset() {
+	*x = UpdateTaskProgressResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateTaskProgressResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateTaskProgressResponse) ProtoMessage() {}
+
+func (x *UpdateTaskProgressResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateTaskProgressResponse.ProtoReflect.Descriptor instead.
+func (*UpdateTaskProgressResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *UpdateTaskProgressResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+type ReassignTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	FromAgentId   string                 `protobuf:"bytes,2,opt,name=from_agent_id,json=fromAgentId,proto3" json:"from_agent_id,omitempty"`
+	ToAgentId     string                 `protobuf:"bytes,3,opt,name=to_agent_id,json=toAgentId,proto3" json:"to_agent_id,omitempty"` // empty = return to pool for any eligible agent
+	Reason        string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReassignTaskRequest) Reset() {
+	*x = ReassignTaskRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReassignTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReassignTaskRequest) ProtoMessage() {}
+
+func (x *ReassignTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReassignTaskRequest.ProtoReflect.Descriptor instead.
+func (*ReassignTaskRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *ReassignTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ReassignTaskRequest) GetFromAgentId() string {
+	if x != nil {
+		return x.FromAgentId
+	}
+	return ""
+}
+
+func (x *ReassignTaskRequest) GetToAgentId() string {
+	if x != nil {
+		return x.ToAgentId
+	}
+	return ""
+}
+
+func (x *ReassignTaskRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type ReassignTaskResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReassignTaskResponse) Reset() {
+	*x = ReassignTaskResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReassignTaskResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReassignTaskResponse) ProtoMessage() {}
+
+func (x *ReassignTaskResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReassignTaskResponse.ProtoReflect.Descriptor instead.
+func (*ReassignTaskResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *ReassignTaskResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+type GetTaskHistoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTaskHistoryRequest) Reset() {
+	*x = GetTaskHistoryRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTaskHistoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTaskHistoryRequest) ProtoMessage() {}
+
+func (x *GetTaskHistoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTaskHistoryRequest.ProtoReflect.Descriptor instead.
+func (*GetTaskHistoryRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *GetTaskHistoryRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+type GetTaskHistoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Entries       []*TaskAuditEntry      `protobuf:"bytes,2,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetTaskHistoryResponse) Reset() {
+	*x = GetTaskHistoryResponse{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetTaskHistoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetTaskHistoryResponse) ProtoMessage() {}
+
+func (x *GetTaskHistoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetTaskHistoryResponse.ProtoReflect.Descriptor instead.
+func (*GetTaskHistoryResponse) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *GetTaskHistoryResponse) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *GetTaskHistoryResponse) GetEntries() []*TaskAuditEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+type TaskAuditEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	EventType     string                 `protobuf:"bytes,2,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"` // "CREATED", "CLAIMED", "PROGRESS", "COMPLETED", "FAILED", etc.
+	AgentId       string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	Data          *structpb.Struct       `protobuf:"bytes,5,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TaskAuditEntry) Reset() {
+	*x = TaskAuditEntry{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskAuditEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskAuditEntry) ProtoMessage() {}
+
+func (x *TaskAuditEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TaskAuditEntry.ProtoReflect.Descriptor instead.
+func (*TaskAuditEntry) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *TaskAuditEntry) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *TaskAuditEntry) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *TaskAuditEntry) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *TaskAuditEntry) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *TaskAuditEntry) GetData() *structpb.Struct {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+type WatchTaskRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchTaskRequest) Reset() {
+	*x = WatchTaskRequest{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchTaskRequest) ProtoMessage() {}
+
+func (x *WatchTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchTaskRequest.ProtoReflect.Descriptor instead.
+func (*WatchTaskRequest) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *WatchTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+type TaskStatusEvent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	AgentId       string                 `protobuf:"bytes,3,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TaskStatusEvent) Reset() {
+	*x = TaskStatusEvent{}
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskStatusEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskStatusEvent) ProtoMessage() {}
+
+func (x *TaskStatusEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TaskStatusEvent.ProtoReflect.Descriptor instead.
+func (*TaskStatusEvent) Descriptor() ([]byte, []int) {
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *TaskStatusEvent) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *TaskStatusEvent) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *TaskStatusEvent) GetAgentId() string {
+	if x != nil {
+		return x.AgentId
+	}
+	return ""
+}
+
+func (x *TaskStatusEvent) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *TaskStatusEvent) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
 type GetWorkflowStateRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowInstanceId string                 `protobuf:"bytes,1,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
@@ -1259,7 +2967,7 @@ type GetWorkflowStateRequest struct {
 
 func (x *GetWorkflowStateRequest) Reset() {
 	*x = GetWorkflowStateRequest{}
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[19]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1271,7 +2979,7 @@ func (x *GetWorkflowStateRequest) String() string {
 func (*GetWorkflowStateRequest) ProtoMessage() {}
 
 func (x *GetWorkflowStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[19]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1284,7 +2992,7 @@ func (x *GetWorkflowStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkflowStateRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkflowStateRequest) Descriptor() ([]byte, []int) {
-	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{19}
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *GetWorkflowStateRequest) GetWorkflowInstanceId() string {
@@ -1299,17 +3007,18 @@ type GetWorkflowStateResponse struct {
 	WorkflowInstanceId   string                 `protobuf:"bytes,1,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
 	WorkflowDefinitionId string                 `protobuf:"bytes,2,opt,name=workflow_definition_id,json=workflowDefinitionId,proto3" json:"workflow_definition_id,omitempty"`
 	Status               WorkflowStatus         `protobuf:"varint,3,opt,name=status,proto3,enum=awm.v1.WorkflowStatus" json:"status,omitempty"`
-	DimensionalState     *structpb.Struct       `protobuf:"bytes,4,opt,name=dimensional_state,json=dimensionalState,proto3" json:"dimensional_state,omitempty"`
-	CreatedAt            *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt            *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	NextTimeout          *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=next_timeout,json=nextTimeout,proto3" json:"next_timeout,omitempty"`
+	CurrentState         string                 `protobuf:"bytes,4,opt,name=current_state,json=currentState,proto3" json:"current_state,omitempty"`
+	ContextData          *structpb.Struct       `protobuf:"bytes,5,opt,name=context_data,json=contextData,proto3" json:"context_data,omitempty"`
+	CreatedAt            *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt            *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	NextTimeout          *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=next_timeout,json=nextTimeout,proto3" json:"next_timeout,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
 func (x *GetWorkflowStateResponse) Reset() {
 	*x = GetWorkflowStateResponse{}
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[20]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1321,7 +3030,7 @@ func (x *GetWorkflowStateResponse) String() string {
 func (*GetWorkflowStateResponse) ProtoMessage() {}
 
 func (x *GetWorkflowStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[20]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1334,7 +3043,7 @@ func (x *GetWorkflowStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkflowStateResponse.ProtoReflect.Descriptor instead.
 func (*GetWorkflowStateResponse) Descriptor() ([]byte, []int) {
-	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{20}
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *GetWorkflowStateResponse) GetWorkflowInstanceId() string {
@@ -1358,9 +3067,16 @@ func (x *GetWorkflowStateResponse) GetStatus() WorkflowStatus {
 	return WorkflowStatus_WORKFLOW_STATUS_UNSPECIFIED
 }
 
-func (x *GetWorkflowStateResponse) GetDimensionalState() *structpb.Struct {
+func (x *GetWorkflowStateResponse) GetCurrentState() string {
 	if x != nil {
-		return x.DimensionalState
+		return x.CurrentState
+	}
+	return ""
+}
+
+func (x *GetWorkflowStateResponse) GetContextData() *structpb.Struct {
+	if x != nil {
+		return x.ContextData
 	}
 	return nil
 }
@@ -1399,7 +3115,7 @@ type ListWorkflowsRequest struct {
 
 func (x *ListWorkflowsRequest) Reset() {
 	*x = ListWorkflowsRequest{}
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[21]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1411,7 +3127,7 @@ func (x *ListWorkflowsRequest) String() string {
 func (*ListWorkflowsRequest) ProtoMessage() {}
 
 func (x *ListWorkflowsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[21]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1424,7 +3140,7 @@ func (x *ListWorkflowsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWorkflowsRequest.ProtoReflect.Descriptor instead.
 func (*ListWorkflowsRequest) Descriptor() ([]byte, []int) {
-	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{21}
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ListWorkflowsRequest) GetTenant() string {
@@ -1472,7 +3188,7 @@ type ListWorkflowsResponse struct {
 
 func (x *ListWorkflowsResponse) Reset() {
 	*x = ListWorkflowsResponse{}
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[22]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1484,7 +3200,7 @@ func (x *ListWorkflowsResponse) String() string {
 func (*ListWorkflowsResponse) ProtoMessage() {}
 
 func (x *ListWorkflowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[22]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1497,7 +3213,7 @@ func (x *ListWorkflowsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWorkflowsResponse.ProtoReflect.Descriptor instead.
 func (*ListWorkflowsResponse) Descriptor() ([]byte, []int) {
-	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{22}
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListWorkflowsResponse) GetWorkflows() []*WorkflowSummary {
@@ -1519,14 +3235,15 @@ type WorkflowSummary struct {
 	WorkflowInstanceId   string                 `protobuf:"bytes,1,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
 	WorkflowDefinitionId string                 `protobuf:"bytes,2,opt,name=workflow_definition_id,json=workflowDefinitionId,proto3" json:"workflow_definition_id,omitempty"`
 	Status               WorkflowStatus         `protobuf:"varint,3,opt,name=status,proto3,enum=awm.v1.WorkflowStatus" json:"status,omitempty"`
-	CreatedAt            *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	CurrentState         string                 `protobuf:"bytes,4,opt,name=current_state,json=currentState,proto3" json:"current_state,omitempty"`
+	CreatedAt            *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
 func (x *WorkflowSummary) Reset() {
 	*x = WorkflowSummary{}
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[23]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1538,7 +3255,7 @@ func (x *WorkflowSummary) String() string {
 func (*WorkflowSummary) ProtoMessage() {}
 
 func (x *WorkflowSummary) ProtoReflect() protoreflect.Message {
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[23]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1551,7 +3268,7 @@ func (x *WorkflowSummary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkflowSummary.ProtoReflect.Descriptor instead.
 func (*WorkflowSummary) Descriptor() ([]byte, []int) {
-	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{23}
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *WorkflowSummary) GetWorkflowInstanceId() string {
@@ -1575,6 +3292,13 @@ func (x *WorkflowSummary) GetStatus() WorkflowStatus {
 	return WorkflowStatus_WORKFLOW_STATUS_UNSPECIFIED
 }
 
+func (x *WorkflowSummary) GetCurrentState() string {
+	if x != nil {
+		return x.CurrentState
+	}
+	return ""
+}
+
 func (x *WorkflowSummary) GetCreatedAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.CreatedAt
@@ -1585,14 +3309,14 @@ func (x *WorkflowSummary) GetCreatedAt() *timestamppb.Timestamp {
 type StreamWorkflowEventsRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowInstanceId string                 `protobuf:"bytes,1,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
-	AfterSequence      int64                  `protobuf:"varint,2,opt,name=after_sequence,json=afterSequence,proto3" json:"after_sequence,omitempty"`
+	AfterSequence      int64                  `protobuf:"varint,2,opt,name=after_sequence,json=afterSequence,proto3" json:"after_sequence,omitempty"` // 0 = replay all events from the beginning
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
 
 func (x *StreamWorkflowEventsRequest) Reset() {
 	*x = StreamWorkflowEventsRequest{}
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[24]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1604,7 +3328,7 @@ func (x *StreamWorkflowEventsRequest) String() string {
 func (*StreamWorkflowEventsRequest) ProtoMessage() {}
 
 func (x *StreamWorkflowEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[24]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1617,7 +3341,7 @@ func (x *StreamWorkflowEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamWorkflowEventsRequest.ProtoReflect.Descriptor instead.
 func (*StreamWorkflowEventsRequest) Descriptor() ([]byte, []int) {
-	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{24}
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *StreamWorkflowEventsRequest) GetWorkflowInstanceId() string {
@@ -1646,7 +3370,7 @@ type WorkflowEvent struct {
 
 func (x *WorkflowEvent) Reset() {
 	*x = WorkflowEvent{}
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[25]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1658,7 +3382,7 @@ func (x *WorkflowEvent) String() string {
 func (*WorkflowEvent) ProtoMessage() {}
 
 func (x *WorkflowEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_awm_v1_orchestrator_proto_msgTypes[25]
+	mi := &file_awm_v1_orchestrator_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1671,7 +3395,7 @@ func (x *WorkflowEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkflowEvent.ProtoReflect.Descriptor instead.
 func (*WorkflowEvent) Descriptor() ([]byte, []int) {
-	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{25}
+	return file_awm_v1_orchestrator_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *WorkflowEvent) GetSequenceNum() int64 {
@@ -1787,19 +3511,145 @@ const file_awm_v1_orchestrator_proto_rawDesc = "" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12&\n" +
 	"\x0factive_task_ids\x18\x02 \x03(\tR\ractiveTaskIds\"#\n" +
 	"\x11HeartbeatResponse\x12\x0e\n" +
-	"\x02ok\x18\x01 \x01(\bR\x02ok\"K\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\"\xe2\x01\n" +
+	"\fTaskEvidence\x12\x18\n" +
+	"\asummary\x18\x01 \x01(\tR\asummary\x12+\n" +
+	"\x04data\x18\x02 \x01(\v2\x17.google.protobuf.StructR\x04data\x121\n" +
+	"\tartifacts\x18\x03 \x03(\v2\x13.awm.v1.ArtifactRefR\tartifacts\x12\x19\n" +
+	"\bagent_id\x18\x04 \x01(\tR\aagentId\x12=\n" +
+	"\fsubmitted_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\vsubmittedAt\"\xc5\x01\n" +
+	"\vArtifactRef\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x10\n" +
+	"\x03uri\x18\x02 \x01(\tR\x03uri\x12\x14\n" +
+	"\x05label\x18\x03 \x01(\tR\x05label\x12=\n" +
+	"\bmetadata\x18\x04 \x03(\v2!.awm.v1.ArtifactRef.MetadataEntryR\bmetadata\x1a;\n" +
+	"\rMetadataEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa5\x01\n" +
+	"\x10ListTasksRequest\x120\n" +
+	"\x14workflow_instance_id\x18\x01 \x01(\tR\x12workflowInstanceId\x12#\n" +
+	"\rstatus_filter\x18\x02 \x01(\tR\fstatusFilter\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"f\n" +
+	"\x11ListTasksResponse\x12)\n" +
+	"\x05tasks\x18\x01 \x03(\v2\x13.awm.v1.TaskSummaryR\x05tasks\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xd3\x02\n" +
+	"\vTaskSummary\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x120\n" +
+	"\x14workflow_instance_id\x18\x02 \x01(\tR\x12workflowInstanceId\x12\x1d\n" +
+	"\n" +
+	"state_name\x18\x03 \x01(\tR\tstateName\x12#\n" +
+	"\ractivity_name\x18\x04 \x01(\tR\factivityName\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12*\n" +
+	"\x11assigned_agent_id\x18\x06 \x01(\tR\x0fassignedAgentId\x126\n" +
+	"\bdeadline\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\")\n" +
+	"\x0eGetTaskRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\"\xde\x04\n" +
+	"\x0fGetTaskResponse\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x120\n" +
+	"\x14workflow_instance_id\x18\x02 \x01(\tR\x12workflowInstanceId\x12\x1d\n" +
+	"\n" +
+	"state_name\x18\x03 \x01(\tR\tstateName\x12#\n" +
+	"\ractivity_name\x18\x04 \x01(\tR\factivityName\x12\"\n" +
+	"\fcapabilities\x18\x05 \x03(\tR\fcapabilities\x12\x14\n" +
+	"\x05roles\x18\x06 \x03(\tR\x05roles\x12-\n" +
+	"\x05input\x18\a \x01(\v2\x17.google.protobuf.StructR\x05input\x12/\n" +
+	"\x06output\x18\b \x01(\v2\x17.google.protobuf.StructR\x06output\x12\x16\n" +
+	"\x06status\x18\t \x01(\tR\x06status\x12*\n" +
+	"\x11assigned_agent_id\x18\n" +
+	" \x01(\tR\x0fassignedAgentId\x126\n" +
+	"\bdeadline\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\bdeadline\x129\n" +
+	"\n" +
+	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x120\n" +
+	"\bevidence\x18\x0e \x01(\v2\x14.awm.v1.TaskEvidenceR\bevidence\"l\n" +
+	"\x12ListMyTasksRequest\x12\x19\n" +
+	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x16\n" +
+	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12#\n" +
+	"\rstatus_filter\x18\x03 \x01(\tR\fstatusFilter\"@\n" +
+	"\x13ListMyTasksResponse\x12)\n" +
+	"\x05tasks\x18\x01 \x03(\v2\x13.awm.v1.TaskSummaryR\x05tasks\"F\n" +
+	"\x10ClaimTaskRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\"q\n" +
+	"\x11ClaimTaskResponse\x12\x18\n" +
+	"\aclaimed\x18\x01 \x01(\bR\aclaimed\x12*\n" +
+	"\x04task\x18\x02 \x01(\v2\x16.awm.v1.TaskAssignmentR\x04task\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"`\n" +
+	"\x12ReleaseTaskRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"1\n" +
+	"\x13ReleaseTaskResponse\x12\x1a\n" +
+	"\breleased\x18\x01 \x01(\bR\breleased\"\x7f\n" +
+	"\x17SubmitTaskResultRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x120\n" +
+	"\bevidence\x18\x03 \x01(\v2\x14.awm.v1.TaskEvidenceR\bevidence\"q\n" +
+	"\x18SubmitTaskResultResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x129\n" +
+	"\x06effect\x18\x02 \x01(\x0e2!.awm.v1.WorkflowAdvancementEffectR\x06effect\"\x95\x01\n" +
+	"\x18SubmitTaskFailureRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12'\n" +
+	"\x05error\x18\x03 \x01(\v2\x11.awm.v1.TaskErrorR\x05error\x12\x1c\n" +
+	"\tretryable\x18\x04 \x01(\bR\tretryable\"r\n" +
+	"\x19SubmitTaskFailureResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x129\n" +
+	"\x06effect\x18\x02 \x01(\x0e2!.awm.v1.WorkflowAdvancementEffectR\x06effect\"\xb0\x01\n" +
+	"\x19UpdateTaskProgressRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x19\n" +
+	"\bagent_id\x18\x02 \x01(\tR\aagentId\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\x12+\n" +
+	"\x04data\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x04data\x12\x18\n" +
+	"\apercent\x18\x05 \x01(\x05R\apercent\"8\n" +
+	"\x1aUpdateTaskProgressResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"\x8a\x01\n" +
+	"\x13ReassignTaskRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\"\n" +
+	"\rfrom_agent_id\x18\x02 \x01(\tR\vfromAgentId\x12\x1e\n" +
+	"\vto_agent_id\x18\x03 \x01(\tR\ttoAgentId\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\"2\n" +
+	"\x14ReassignTaskResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\"0\n" +
+	"\x15GetTaskHistoryRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\"c\n" +
+	"\x16GetTaskHistoryResponse\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x120\n" +
+	"\aentries\x18\x02 \x03(\v2\x16.awm.v1.TaskAuditEntryR\aentries\"\xcb\x01\n" +
+	"\x0eTaskAuditEntry\x128\n" +
+	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x02 \x01(\tR\teventType\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12+\n" +
+	"\x04data\x18\x05 \x01(\v2\x17.google.protobuf.StructR\x04data\"+\n" +
+	"\x10WatchTaskRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\"\xb4\x01\n" +
+	"\x0fTaskStatusEvent\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x19\n" +
+	"\bagent_id\x18\x03 \x01(\tR\aagentId\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12;\n" +
+	"\voccurred_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\"K\n" +
 	"\x17GetWorkflowStateRequest\x120\n" +
-	"\x14workflow_instance_id\x18\x01 \x01(\tR\x12workflowInstanceId\"\xad\x03\n" +
+	"\x14workflow_instance_id\x18\x01 \x01(\tR\x12workflowInstanceId\"\xc8\x03\n" +
 	"\x18GetWorkflowStateResponse\x120\n" +
 	"\x14workflow_instance_id\x18\x01 \x01(\tR\x12workflowInstanceId\x124\n" +
 	"\x16workflow_definition_id\x18\x02 \x01(\tR\x14workflowDefinitionId\x12.\n" +
-	"\x06status\x18\x03 \x01(\x0e2\x16.awm.v1.WorkflowStatusR\x06status\x12D\n" +
-	"\x11dimensional_state\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x10dimensionalState\x129\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x16.awm.v1.WorkflowStatusR\x06status\x12#\n" +
+	"\rcurrent_state\x18\x04 \x01(\tR\fcurrentState\x12:\n" +
+	"\fcontext_data\x18\x05 \x01(\v2\x17.google.protobuf.StructR\vcontextData\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12=\n" +
-	"\fnext_timeout\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\vnextTimeout\"\xdd\x01\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12=\n" +
+	"\fnext_timeout\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\vnextTimeout\"\xdd\x01\n" +
 	"\x14ListWorkflowsRequest\x12\x16\n" +
 	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x124\n" +
 	"\x16workflow_definition_id\x18\x02 \x01(\tR\x14workflowDefinitionId\x12;\n" +
@@ -1809,13 +3659,14 @@ const file_awm_v1_orchestrator_proto_rawDesc = "" +
 	"page_token\x18\x05 \x01(\tR\tpageToken\"v\n" +
 	"\x15ListWorkflowsResponse\x125\n" +
 	"\tworkflows\x18\x01 \x03(\v2\x17.awm.v1.WorkflowSummaryR\tworkflows\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xe4\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\x89\x02\n" +
 	"\x0fWorkflowSummary\x120\n" +
 	"\x14workflow_instance_id\x18\x01 \x01(\tR\x12workflowInstanceId\x124\n" +
 	"\x16workflow_definition_id\x18\x02 \x01(\tR\x14workflowDefinitionId\x12.\n" +
-	"\x06status\x18\x03 \x01(\x0e2\x16.awm.v1.WorkflowStatusR\x06status\x129\n" +
+	"\x06status\x18\x03 \x01(\x0e2\x16.awm.v1.WorkflowStatusR\x06status\x12#\n" +
+	"\rcurrent_state\x18\x04 \x01(\tR\fcurrentState\x129\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"v\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"v\n" +
 	"\x1bStreamWorkflowEventsRequest\x120\n" +
 	"\x14workflow_instance_id\x18\x01 \x01(\tR\x12workflowInstanceId\x12%\n" +
 	"\x0eafter_sequence\x18\x02 \x01(\x03R\rafterSequence\"\xbe\x01\n" +
@@ -1824,7 +3675,15 @@ const file_awm_v1_orchestrator_proto_rawDesc = "" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x03 \x01(\tR\teventType\x121\n" +
-	"\apayload\x18\x04 \x01(\v2\x17.google.protobuf.StructR\apayload*\xe3\x01\n" +
+	"\apayload\x18\x04 \x01(\v2\x17.google.protobuf.StructR\apayload*\xc7\x02\n" +
+	"\x19WorkflowAdvancementEffect\x12+\n" +
+	"'WORKFLOW_ADVANCEMENT_EFFECT_UNSPECIFIED\x10\x00\x12-\n" +
+	")WORKFLOW_ADVANCEMENT_EFFECT_TASKS_PENDING\x10\x01\x12(\n" +
+	"$WORKFLOW_ADVANCEMENT_EFFECT_ADVANCED\x10\x02\x12)\n" +
+	"%WORKFLOW_ADVANCEMENT_EFFECT_COMPLETED\x10\x03\x12&\n" +
+	"\"WORKFLOW_ADVANCEMENT_EFFECT_FAILED\x10\x04\x12(\n" +
+	"$WORKFLOW_ADVANCEMENT_EFFECT_RETRYING\x10\x05\x12'\n" +
+	"#WORKFLOW_ADVANCEMENT_EFFECT_WAITING\x10\x06*\xe3\x01\n" +
 	"\x0eWorkflowStatus\x12\x1f\n" +
 	"\x1bWORKFLOW_STATUS_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17WORKFLOW_STATUS_RUNNING\x10\x01\x12\x1d\n" +
@@ -1832,14 +3691,25 @@ const file_awm_v1_orchestrator_proto_rawDesc = "" +
 	"\x19WORKFLOW_STATUS_COMPLETED\x10\x03\x12\x1a\n" +
 	"\x16WORKFLOW_STATUS_FAILED\x10\x04\x12\x1c\n" +
 	"\x18WORKFLOW_STATUS_CANCELED\x10\x05\x12\x1b\n" +
-	"\x17WORKFLOW_STATUS_WAITING\x10\x062\xa5\x05\n" +
+	"\x17WORKFLOW_STATUS_WAITING\x10\x062\xe1\v\n" +
 	"\fOrchestrator\x12;\n" +
 	"\aConnect\x12\x15.awm.v1.AgentToServer\x1a\x15.awm.v1.ServerToAgent(\x010\x01\x12=\n" +
 	"\bPollTask\x12\x17.awm.v1.PollTaskRequest\x1a\x18.awm.v1.PollTaskResponse\x12I\n" +
 	"\fCompleteTask\x12\x1b.awm.v1.CompleteTaskRequest\x1a\x1c.awm.v1.CompleteTaskResponse\x12=\n" +
 	"\bFailTask\x12\x17.awm.v1.FailTaskRequest\x1a\x18.awm.v1.FailTaskResponse\x12R\n" +
 	"\x0fExtendTaskLease\x12\x1e.awm.v1.ExtendTaskLeaseRequest\x1a\x1f.awm.v1.ExtendTaskLeaseResponse\x12@\n" +
-	"\tHeartbeat\x12\x18.awm.v1.HeartbeatRequest\x1a\x19.awm.v1.HeartbeatResponse\x12U\n" +
+	"\tHeartbeat\x12\x18.awm.v1.HeartbeatRequest\x1a\x19.awm.v1.HeartbeatResponse\x12@\n" +
+	"\tListTasks\x12\x18.awm.v1.ListTasksRequest\x1a\x19.awm.v1.ListTasksResponse\x12:\n" +
+	"\aGetTask\x12\x16.awm.v1.GetTaskRequest\x1a\x17.awm.v1.GetTaskResponse\x12F\n" +
+	"\vListMyTasks\x12\x1a.awm.v1.ListMyTasksRequest\x1a\x1b.awm.v1.ListMyTasksResponse\x12@\n" +
+	"\tClaimTask\x12\x18.awm.v1.ClaimTaskRequest\x1a\x19.awm.v1.ClaimTaskResponse\x12F\n" +
+	"\vReleaseTask\x12\x1a.awm.v1.ReleaseTaskRequest\x1a\x1b.awm.v1.ReleaseTaskResponse\x12U\n" +
+	"\x10SubmitTaskResult\x12\x1f.awm.v1.SubmitTaskResultRequest\x1a .awm.v1.SubmitTaskResultResponse\x12X\n" +
+	"\x11SubmitTaskFailure\x12 .awm.v1.SubmitTaskFailureRequest\x1a!.awm.v1.SubmitTaskFailureResponse\x12[\n" +
+	"\x12UpdateTaskProgress\x12!.awm.v1.UpdateTaskProgressRequest\x1a\".awm.v1.UpdateTaskProgressResponse\x12I\n" +
+	"\fReassignTask\x12\x1b.awm.v1.ReassignTaskRequest\x1a\x1c.awm.v1.ReassignTaskResponse\x12O\n" +
+	"\x0eGetTaskHistory\x12\x1d.awm.v1.GetTaskHistoryRequest\x1a\x1e.awm.v1.GetTaskHistoryResponse\x12@\n" +
+	"\tWatchTask\x12\x18.awm.v1.WatchTaskRequest\x1a\x17.awm.v1.TaskStatusEvent0\x01\x12U\n" +
 	"\x10GetWorkflowState\x12\x1f.awm.v1.GetWorkflowStateRequest\x1a .awm.v1.GetWorkflowStateResponse\x12L\n" +
 	"\rListWorkflows\x12\x1c.awm.v1.ListWorkflowsRequest\x1a\x1d.awm.v1.ListWorkflowsResponse\x12T\n" +
 	"\x14StreamWorkflowEvents\x12#.awm.v1.StreamWorkflowEventsRequest\x1a\x15.awm.v1.WorkflowEvent0\x01B5Z3github.com/autocondat/awm-proto/gen/go/awm/v1;awmv1b\x06proto3"
@@ -1856,96 +3726,170 @@ func file_awm_v1_orchestrator_proto_rawDescGZIP() []byte {
 	return file_awm_v1_orchestrator_proto_rawDescData
 }
 
-var file_awm_v1_orchestrator_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_awm_v1_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_awm_v1_orchestrator_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_awm_v1_orchestrator_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_awm_v1_orchestrator_proto_goTypes = []any{
-	(WorkflowStatus)(0),                 // 0: awm.v1.WorkflowStatus
-	(*AgentToServer)(nil),               // 1: awm.v1.AgentToServer
-	(*ServerToAgent)(nil),               // 2: awm.v1.ServerToAgent
-	(*RegisterAgent)(nil),               // 3: awm.v1.RegisterAgent
-	(*TaskAssignment)(nil),              // 4: awm.v1.TaskAssignment
-	(*TaskResult)(nil),                  // 5: awm.v1.TaskResult
-	(*Heartbeat)(nil),                   // 6: awm.v1.Heartbeat
-	(*AgentDisconnect)(nil),             // 7: awm.v1.AgentDisconnect
-	(*Ack)(nil),                         // 8: awm.v1.Ack
-	(*SignalWorkflow)(nil),              // 9: awm.v1.SignalWorkflow
-	(*PollTaskRequest)(nil),             // 10: awm.v1.PollTaskRequest
-	(*PollTaskResponse)(nil),            // 11: awm.v1.PollTaskResponse
-	(*CompleteTaskRequest)(nil),         // 12: awm.v1.CompleteTaskRequest
-	(*CompleteTaskResponse)(nil),        // 13: awm.v1.CompleteTaskResponse
-	(*FailTaskRequest)(nil),             // 14: awm.v1.FailTaskRequest
-	(*FailTaskResponse)(nil),            // 15: awm.v1.FailTaskResponse
-	(*ExtendTaskLeaseRequest)(nil),      // 16: awm.v1.ExtendTaskLeaseRequest
-	(*ExtendTaskLeaseResponse)(nil),     // 17: awm.v1.ExtendTaskLeaseResponse
-	(*HeartbeatRequest)(nil),            // 18: awm.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),           // 19: awm.v1.HeartbeatResponse
-	(*GetWorkflowStateRequest)(nil),     // 20: awm.v1.GetWorkflowStateRequest
-	(*GetWorkflowStateResponse)(nil),    // 21: awm.v1.GetWorkflowStateResponse
-	(*ListWorkflowsRequest)(nil),        // 22: awm.v1.ListWorkflowsRequest
-	(*ListWorkflowsResponse)(nil),       // 23: awm.v1.ListWorkflowsResponse
-	(*WorkflowSummary)(nil),             // 24: awm.v1.WorkflowSummary
-	(*StreamWorkflowEventsRequest)(nil), // 25: awm.v1.StreamWorkflowEventsRequest
-	(*WorkflowEvent)(nil),               // 26: awm.v1.WorkflowEvent
-	nil,                                 // 27: awm.v1.RegisterAgent.LabelsEntry
-	nil,                                 // 28: awm.v1.TaskAssignment.MetadataEntry
-	(*structpb.Struct)(nil),             // 29: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),       // 30: google.protobuf.Timestamp
-	(*TaskError)(nil),                   // 31: awm.v1.TaskError
+	(WorkflowAdvancementEffect)(0),      // 0: awm.v1.WorkflowAdvancementEffect
+	(WorkflowStatus)(0),                 // 1: awm.v1.WorkflowStatus
+	(*AgentToServer)(nil),               // 2: awm.v1.AgentToServer
+	(*ServerToAgent)(nil),               // 3: awm.v1.ServerToAgent
+	(*RegisterAgent)(nil),               // 4: awm.v1.RegisterAgent
+	(*TaskAssignment)(nil),              // 5: awm.v1.TaskAssignment
+	(*TaskResult)(nil),                  // 6: awm.v1.TaskResult
+	(*Heartbeat)(nil),                   // 7: awm.v1.Heartbeat
+	(*AgentDisconnect)(nil),             // 8: awm.v1.AgentDisconnect
+	(*Ack)(nil),                         // 9: awm.v1.Ack
+	(*SignalWorkflow)(nil),              // 10: awm.v1.SignalWorkflow
+	(*PollTaskRequest)(nil),             // 11: awm.v1.PollTaskRequest
+	(*PollTaskResponse)(nil),            // 12: awm.v1.PollTaskResponse
+	(*CompleteTaskRequest)(nil),         // 13: awm.v1.CompleteTaskRequest
+	(*CompleteTaskResponse)(nil),        // 14: awm.v1.CompleteTaskResponse
+	(*FailTaskRequest)(nil),             // 15: awm.v1.FailTaskRequest
+	(*FailTaskResponse)(nil),            // 16: awm.v1.FailTaskResponse
+	(*ExtendTaskLeaseRequest)(nil),      // 17: awm.v1.ExtendTaskLeaseRequest
+	(*ExtendTaskLeaseResponse)(nil),     // 18: awm.v1.ExtendTaskLeaseResponse
+	(*HeartbeatRequest)(nil),            // 19: awm.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),           // 20: awm.v1.HeartbeatResponse
+	(*TaskEvidence)(nil),                // 21: awm.v1.TaskEvidence
+	(*ArtifactRef)(nil),                 // 22: awm.v1.ArtifactRef
+	(*ListTasksRequest)(nil),            // 23: awm.v1.ListTasksRequest
+	(*ListTasksResponse)(nil),           // 24: awm.v1.ListTasksResponse
+	(*TaskSummary)(nil),                 // 25: awm.v1.TaskSummary
+	(*GetTaskRequest)(nil),              // 26: awm.v1.GetTaskRequest
+	(*GetTaskResponse)(nil),             // 27: awm.v1.GetTaskResponse
+	(*ListMyTasksRequest)(nil),          // 28: awm.v1.ListMyTasksRequest
+	(*ListMyTasksResponse)(nil),         // 29: awm.v1.ListMyTasksResponse
+	(*ClaimTaskRequest)(nil),            // 30: awm.v1.ClaimTaskRequest
+	(*ClaimTaskResponse)(nil),           // 31: awm.v1.ClaimTaskResponse
+	(*ReleaseTaskRequest)(nil),          // 32: awm.v1.ReleaseTaskRequest
+	(*ReleaseTaskResponse)(nil),         // 33: awm.v1.ReleaseTaskResponse
+	(*SubmitTaskResultRequest)(nil),     // 34: awm.v1.SubmitTaskResultRequest
+	(*SubmitTaskResultResponse)(nil),    // 35: awm.v1.SubmitTaskResultResponse
+	(*SubmitTaskFailureRequest)(nil),    // 36: awm.v1.SubmitTaskFailureRequest
+	(*SubmitTaskFailureResponse)(nil),   // 37: awm.v1.SubmitTaskFailureResponse
+	(*UpdateTaskProgressRequest)(nil),   // 38: awm.v1.UpdateTaskProgressRequest
+	(*UpdateTaskProgressResponse)(nil),  // 39: awm.v1.UpdateTaskProgressResponse
+	(*ReassignTaskRequest)(nil),         // 40: awm.v1.ReassignTaskRequest
+	(*ReassignTaskResponse)(nil),        // 41: awm.v1.ReassignTaskResponse
+	(*GetTaskHistoryRequest)(nil),       // 42: awm.v1.GetTaskHistoryRequest
+	(*GetTaskHistoryResponse)(nil),      // 43: awm.v1.GetTaskHistoryResponse
+	(*TaskAuditEntry)(nil),              // 44: awm.v1.TaskAuditEntry
+	(*WatchTaskRequest)(nil),            // 45: awm.v1.WatchTaskRequest
+	(*TaskStatusEvent)(nil),             // 46: awm.v1.TaskStatusEvent
+	(*GetWorkflowStateRequest)(nil),     // 47: awm.v1.GetWorkflowStateRequest
+	(*GetWorkflowStateResponse)(nil),    // 48: awm.v1.GetWorkflowStateResponse
+	(*ListWorkflowsRequest)(nil),        // 49: awm.v1.ListWorkflowsRequest
+	(*ListWorkflowsResponse)(nil),       // 50: awm.v1.ListWorkflowsResponse
+	(*WorkflowSummary)(nil),             // 51: awm.v1.WorkflowSummary
+	(*StreamWorkflowEventsRequest)(nil), // 52: awm.v1.StreamWorkflowEventsRequest
+	(*WorkflowEvent)(nil),               // 53: awm.v1.WorkflowEvent
+	nil,                                 // 54: awm.v1.RegisterAgent.LabelsEntry
+	nil,                                 // 55: awm.v1.TaskAssignment.MetadataEntry
+	nil,                                 // 56: awm.v1.ArtifactRef.MetadataEntry
+	(*structpb.Struct)(nil),             // 57: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),       // 58: google.protobuf.Timestamp
+	(*TaskError)(nil),                   // 59: awm.v1.TaskError
 }
 var file_awm_v1_orchestrator_proto_depIdxs = []int32{
-	3,  // 0: awm.v1.AgentToServer.register:type_name -> awm.v1.RegisterAgent
-	5,  // 1: awm.v1.AgentToServer.task_result:type_name -> awm.v1.TaskResult
-	6,  // 2: awm.v1.AgentToServer.heartbeat:type_name -> awm.v1.Heartbeat
-	7,  // 3: awm.v1.AgentToServer.disconnect:type_name -> awm.v1.AgentDisconnect
-	4,  // 4: awm.v1.ServerToAgent.task_assignment:type_name -> awm.v1.TaskAssignment
-	9,  // 5: awm.v1.ServerToAgent.signal:type_name -> awm.v1.SignalWorkflow
-	8,  // 6: awm.v1.ServerToAgent.ack:type_name -> awm.v1.Ack
-	27, // 7: awm.v1.RegisterAgent.labels:type_name -> awm.v1.RegisterAgent.LabelsEntry
-	29, // 8: awm.v1.TaskAssignment.input:type_name -> google.protobuf.Struct
-	30, // 9: awm.v1.TaskAssignment.deadline:type_name -> google.protobuf.Timestamp
-	28, // 10: awm.v1.TaskAssignment.metadata:type_name -> awm.v1.TaskAssignment.MetadataEntry
-	29, // 11: awm.v1.TaskResult.success:type_name -> google.protobuf.Struct
-	31, // 12: awm.v1.TaskResult.error:type_name -> awm.v1.TaskError
-	29, // 13: awm.v1.SignalWorkflow.payload:type_name -> google.protobuf.Struct
-	4,  // 14: awm.v1.PollTaskResponse.task:type_name -> awm.v1.TaskAssignment
-	29, // 15: awm.v1.CompleteTaskRequest.result:type_name -> google.protobuf.Struct
-	31, // 16: awm.v1.FailTaskRequest.error:type_name -> awm.v1.TaskError
-	30, // 17: awm.v1.ExtendTaskLeaseRequest.new_deadline:type_name -> google.protobuf.Timestamp
-	30, // 18: awm.v1.ExtendTaskLeaseResponse.actual_deadline:type_name -> google.protobuf.Timestamp
-	0,  // 19: awm.v1.GetWorkflowStateResponse.status:type_name -> awm.v1.WorkflowStatus
-	29, // 20: awm.v1.GetWorkflowStateResponse.dimensional_state:type_name -> google.protobuf.Struct
-	30, // 21: awm.v1.GetWorkflowStateResponse.created_at:type_name -> google.protobuf.Timestamp
-	30, // 22: awm.v1.GetWorkflowStateResponse.updated_at:type_name -> google.protobuf.Timestamp
-	30, // 23: awm.v1.GetWorkflowStateResponse.next_timeout:type_name -> google.protobuf.Timestamp
-	0,  // 24: awm.v1.ListWorkflowsRequest.status_filter:type_name -> awm.v1.WorkflowStatus
-	24, // 25: awm.v1.ListWorkflowsResponse.workflows:type_name -> awm.v1.WorkflowSummary
-	0,  // 26: awm.v1.WorkflowSummary.status:type_name -> awm.v1.WorkflowStatus
-	30, // 27: awm.v1.WorkflowSummary.created_at:type_name -> google.protobuf.Timestamp
-	30, // 28: awm.v1.WorkflowEvent.timestamp:type_name -> google.protobuf.Timestamp
-	29, // 29: awm.v1.WorkflowEvent.payload:type_name -> google.protobuf.Struct
-	1,  // 30: awm.v1.Orchestrator.Connect:input_type -> awm.v1.AgentToServer
-	10, // 31: awm.v1.Orchestrator.PollTask:input_type -> awm.v1.PollTaskRequest
-	12, // 32: awm.v1.Orchestrator.CompleteTask:input_type -> awm.v1.CompleteTaskRequest
-	14, // 33: awm.v1.Orchestrator.FailTask:input_type -> awm.v1.FailTaskRequest
-	16, // 34: awm.v1.Orchestrator.ExtendTaskLease:input_type -> awm.v1.ExtendTaskLeaseRequest
-	18, // 35: awm.v1.Orchestrator.Heartbeat:input_type -> awm.v1.HeartbeatRequest
-	20, // 36: awm.v1.Orchestrator.GetWorkflowState:input_type -> awm.v1.GetWorkflowStateRequest
-	22, // 37: awm.v1.Orchestrator.ListWorkflows:input_type -> awm.v1.ListWorkflowsRequest
-	25, // 38: awm.v1.Orchestrator.StreamWorkflowEvents:input_type -> awm.v1.StreamWorkflowEventsRequest
-	2,  // 39: awm.v1.Orchestrator.Connect:output_type -> awm.v1.ServerToAgent
-	11, // 40: awm.v1.Orchestrator.PollTask:output_type -> awm.v1.PollTaskResponse
-	13, // 41: awm.v1.Orchestrator.CompleteTask:output_type -> awm.v1.CompleteTaskResponse
-	15, // 42: awm.v1.Orchestrator.FailTask:output_type -> awm.v1.FailTaskResponse
-	17, // 43: awm.v1.Orchestrator.ExtendTaskLease:output_type -> awm.v1.ExtendTaskLeaseResponse
-	19, // 44: awm.v1.Orchestrator.Heartbeat:output_type -> awm.v1.HeartbeatResponse
-	21, // 45: awm.v1.Orchestrator.GetWorkflowState:output_type -> awm.v1.GetWorkflowStateResponse
-	23, // 46: awm.v1.Orchestrator.ListWorkflows:output_type -> awm.v1.ListWorkflowsResponse
-	26, // 47: awm.v1.Orchestrator.StreamWorkflowEvents:output_type -> awm.v1.WorkflowEvent
-	39, // [39:48] is the sub-list for method output_type
-	30, // [30:39] is the sub-list for method input_type
-	30, // [30:30] is the sub-list for extension type_name
-	30, // [30:30] is the sub-list for extension extendee
-	0,  // [0:30] is the sub-list for field type_name
+	4,  // 0: awm.v1.AgentToServer.register:type_name -> awm.v1.RegisterAgent
+	6,  // 1: awm.v1.AgentToServer.task_result:type_name -> awm.v1.TaskResult
+	7,  // 2: awm.v1.AgentToServer.heartbeat:type_name -> awm.v1.Heartbeat
+	8,  // 3: awm.v1.AgentToServer.disconnect:type_name -> awm.v1.AgentDisconnect
+	5,  // 4: awm.v1.ServerToAgent.task_assignment:type_name -> awm.v1.TaskAssignment
+	10, // 5: awm.v1.ServerToAgent.signal:type_name -> awm.v1.SignalWorkflow
+	9,  // 6: awm.v1.ServerToAgent.ack:type_name -> awm.v1.Ack
+	54, // 7: awm.v1.RegisterAgent.labels:type_name -> awm.v1.RegisterAgent.LabelsEntry
+	57, // 8: awm.v1.TaskAssignment.input:type_name -> google.protobuf.Struct
+	58, // 9: awm.v1.TaskAssignment.deadline:type_name -> google.protobuf.Timestamp
+	55, // 10: awm.v1.TaskAssignment.metadata:type_name -> awm.v1.TaskAssignment.MetadataEntry
+	57, // 11: awm.v1.TaskResult.success:type_name -> google.protobuf.Struct
+	59, // 12: awm.v1.TaskResult.error:type_name -> awm.v1.TaskError
+	57, // 13: awm.v1.SignalWorkflow.payload:type_name -> google.protobuf.Struct
+	5,  // 14: awm.v1.PollTaskResponse.task:type_name -> awm.v1.TaskAssignment
+	57, // 15: awm.v1.CompleteTaskRequest.result:type_name -> google.protobuf.Struct
+	59, // 16: awm.v1.FailTaskRequest.error:type_name -> awm.v1.TaskError
+	58, // 17: awm.v1.ExtendTaskLeaseRequest.new_deadline:type_name -> google.protobuf.Timestamp
+	58, // 18: awm.v1.ExtendTaskLeaseResponse.actual_deadline:type_name -> google.protobuf.Timestamp
+	57, // 19: awm.v1.TaskEvidence.data:type_name -> google.protobuf.Struct
+	22, // 20: awm.v1.TaskEvidence.artifacts:type_name -> awm.v1.ArtifactRef
+	58, // 21: awm.v1.TaskEvidence.submitted_at:type_name -> google.protobuf.Timestamp
+	56, // 22: awm.v1.ArtifactRef.metadata:type_name -> awm.v1.ArtifactRef.MetadataEntry
+	25, // 23: awm.v1.ListTasksResponse.tasks:type_name -> awm.v1.TaskSummary
+	58, // 24: awm.v1.TaskSummary.deadline:type_name -> google.protobuf.Timestamp
+	58, // 25: awm.v1.TaskSummary.created_at:type_name -> google.protobuf.Timestamp
+	57, // 26: awm.v1.GetTaskResponse.input:type_name -> google.protobuf.Struct
+	57, // 27: awm.v1.GetTaskResponse.output:type_name -> google.protobuf.Struct
+	58, // 28: awm.v1.GetTaskResponse.deadline:type_name -> google.protobuf.Timestamp
+	58, // 29: awm.v1.GetTaskResponse.created_at:type_name -> google.protobuf.Timestamp
+	58, // 30: awm.v1.GetTaskResponse.updated_at:type_name -> google.protobuf.Timestamp
+	21, // 31: awm.v1.GetTaskResponse.evidence:type_name -> awm.v1.TaskEvidence
+	25, // 32: awm.v1.ListMyTasksResponse.tasks:type_name -> awm.v1.TaskSummary
+	5,  // 33: awm.v1.ClaimTaskResponse.task:type_name -> awm.v1.TaskAssignment
+	21, // 34: awm.v1.SubmitTaskResultRequest.evidence:type_name -> awm.v1.TaskEvidence
+	0,  // 35: awm.v1.SubmitTaskResultResponse.effect:type_name -> awm.v1.WorkflowAdvancementEffect
+	59, // 36: awm.v1.SubmitTaskFailureRequest.error:type_name -> awm.v1.TaskError
+	0,  // 37: awm.v1.SubmitTaskFailureResponse.effect:type_name -> awm.v1.WorkflowAdvancementEffect
+	57, // 38: awm.v1.UpdateTaskProgressRequest.data:type_name -> google.protobuf.Struct
+	44, // 39: awm.v1.GetTaskHistoryResponse.entries:type_name -> awm.v1.TaskAuditEntry
+	58, // 40: awm.v1.TaskAuditEntry.timestamp:type_name -> google.protobuf.Timestamp
+	57, // 41: awm.v1.TaskAuditEntry.data:type_name -> google.protobuf.Struct
+	58, // 42: awm.v1.TaskStatusEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	1,  // 43: awm.v1.GetWorkflowStateResponse.status:type_name -> awm.v1.WorkflowStatus
+	57, // 44: awm.v1.GetWorkflowStateResponse.context_data:type_name -> google.protobuf.Struct
+	58, // 45: awm.v1.GetWorkflowStateResponse.created_at:type_name -> google.protobuf.Timestamp
+	58, // 46: awm.v1.GetWorkflowStateResponse.updated_at:type_name -> google.protobuf.Timestamp
+	58, // 47: awm.v1.GetWorkflowStateResponse.next_timeout:type_name -> google.protobuf.Timestamp
+	1,  // 48: awm.v1.ListWorkflowsRequest.status_filter:type_name -> awm.v1.WorkflowStatus
+	51, // 49: awm.v1.ListWorkflowsResponse.workflows:type_name -> awm.v1.WorkflowSummary
+	1,  // 50: awm.v1.WorkflowSummary.status:type_name -> awm.v1.WorkflowStatus
+	58, // 51: awm.v1.WorkflowSummary.created_at:type_name -> google.protobuf.Timestamp
+	58, // 52: awm.v1.WorkflowEvent.timestamp:type_name -> google.protobuf.Timestamp
+	57, // 53: awm.v1.WorkflowEvent.payload:type_name -> google.protobuf.Struct
+	2,  // 54: awm.v1.Orchestrator.Connect:input_type -> awm.v1.AgentToServer
+	11, // 55: awm.v1.Orchestrator.PollTask:input_type -> awm.v1.PollTaskRequest
+	13, // 56: awm.v1.Orchestrator.CompleteTask:input_type -> awm.v1.CompleteTaskRequest
+	15, // 57: awm.v1.Orchestrator.FailTask:input_type -> awm.v1.FailTaskRequest
+	17, // 58: awm.v1.Orchestrator.ExtendTaskLease:input_type -> awm.v1.ExtendTaskLeaseRequest
+	19, // 59: awm.v1.Orchestrator.Heartbeat:input_type -> awm.v1.HeartbeatRequest
+	23, // 60: awm.v1.Orchestrator.ListTasks:input_type -> awm.v1.ListTasksRequest
+	26, // 61: awm.v1.Orchestrator.GetTask:input_type -> awm.v1.GetTaskRequest
+	28, // 62: awm.v1.Orchestrator.ListMyTasks:input_type -> awm.v1.ListMyTasksRequest
+	30, // 63: awm.v1.Orchestrator.ClaimTask:input_type -> awm.v1.ClaimTaskRequest
+	32, // 64: awm.v1.Orchestrator.ReleaseTask:input_type -> awm.v1.ReleaseTaskRequest
+	34, // 65: awm.v1.Orchestrator.SubmitTaskResult:input_type -> awm.v1.SubmitTaskResultRequest
+	36, // 66: awm.v1.Orchestrator.SubmitTaskFailure:input_type -> awm.v1.SubmitTaskFailureRequest
+	38, // 67: awm.v1.Orchestrator.UpdateTaskProgress:input_type -> awm.v1.UpdateTaskProgressRequest
+	40, // 68: awm.v1.Orchestrator.ReassignTask:input_type -> awm.v1.ReassignTaskRequest
+	42, // 69: awm.v1.Orchestrator.GetTaskHistory:input_type -> awm.v1.GetTaskHistoryRequest
+	45, // 70: awm.v1.Orchestrator.WatchTask:input_type -> awm.v1.WatchTaskRequest
+	47, // 71: awm.v1.Orchestrator.GetWorkflowState:input_type -> awm.v1.GetWorkflowStateRequest
+	49, // 72: awm.v1.Orchestrator.ListWorkflows:input_type -> awm.v1.ListWorkflowsRequest
+	52, // 73: awm.v1.Orchestrator.StreamWorkflowEvents:input_type -> awm.v1.StreamWorkflowEventsRequest
+	3,  // 74: awm.v1.Orchestrator.Connect:output_type -> awm.v1.ServerToAgent
+	12, // 75: awm.v1.Orchestrator.PollTask:output_type -> awm.v1.PollTaskResponse
+	14, // 76: awm.v1.Orchestrator.CompleteTask:output_type -> awm.v1.CompleteTaskResponse
+	16, // 77: awm.v1.Orchestrator.FailTask:output_type -> awm.v1.FailTaskResponse
+	18, // 78: awm.v1.Orchestrator.ExtendTaskLease:output_type -> awm.v1.ExtendTaskLeaseResponse
+	20, // 79: awm.v1.Orchestrator.Heartbeat:output_type -> awm.v1.HeartbeatResponse
+	24, // 80: awm.v1.Orchestrator.ListTasks:output_type -> awm.v1.ListTasksResponse
+	27, // 81: awm.v1.Orchestrator.GetTask:output_type -> awm.v1.GetTaskResponse
+	29, // 82: awm.v1.Orchestrator.ListMyTasks:output_type -> awm.v1.ListMyTasksResponse
+	31, // 83: awm.v1.Orchestrator.ClaimTask:output_type -> awm.v1.ClaimTaskResponse
+	33, // 84: awm.v1.Orchestrator.ReleaseTask:output_type -> awm.v1.ReleaseTaskResponse
+	35, // 85: awm.v1.Orchestrator.SubmitTaskResult:output_type -> awm.v1.SubmitTaskResultResponse
+	37, // 86: awm.v1.Orchestrator.SubmitTaskFailure:output_type -> awm.v1.SubmitTaskFailureResponse
+	39, // 87: awm.v1.Orchestrator.UpdateTaskProgress:output_type -> awm.v1.UpdateTaskProgressResponse
+	41, // 88: awm.v1.Orchestrator.ReassignTask:output_type -> awm.v1.ReassignTaskResponse
+	43, // 89: awm.v1.Orchestrator.GetTaskHistory:output_type -> awm.v1.GetTaskHistoryResponse
+	46, // 90: awm.v1.Orchestrator.WatchTask:output_type -> awm.v1.TaskStatusEvent
+	48, // 91: awm.v1.Orchestrator.GetWorkflowState:output_type -> awm.v1.GetWorkflowStateResponse
+	50, // 92: awm.v1.Orchestrator.ListWorkflows:output_type -> awm.v1.ListWorkflowsResponse
+	53, // 93: awm.v1.Orchestrator.StreamWorkflowEvents:output_type -> awm.v1.WorkflowEvent
+	74, // [74:94] is the sub-list for method output_type
+	54, // [54:74] is the sub-list for method input_type
+	54, // [54:54] is the sub-list for extension type_name
+	54, // [54:54] is the sub-list for extension extendee
+	0,  // [0:54] is the sub-list for field type_name
 }
 
 func init() { file_awm_v1_orchestrator_proto_init() }
@@ -1974,8 +3918,8 @@ func file_awm_v1_orchestrator_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_awm_v1_orchestrator_proto_rawDesc), len(file_awm_v1_orchestrator_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   28,
+			NumEnums:      2,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -36,21 +36,35 @@ const (
 // PublicClient is the client API for Public service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Public is the management plane.
+// Used by the CLI and operator tools to manage workflow definitions,
+// deploy instances, and control workflow execution.
 type PublicClient interface {
-	// Workflow Definition CRUD
+	// Upload a YAML workflow definition. Validates structure and stores it.
 	CreateWorkflowDefinition(ctx context.Context, in *CreateWorkflowDefinitionRequest, opts ...grpc.CallOption) (*WorkflowDefinition, error)
+	// Retrieve a stored workflow definition by its internal ID.
 	GetWorkflowDefinition(ctx context.Context, in *GetWorkflowDefinitionRequest, opts ...grpc.CallOption) (*WorkflowDefinition, error)
+	// Replace a definition's YAML content. Creates a new version; prior version is retained.
 	UpdateWorkflowDefinition(ctx context.Context, in *UpdateWorkflowDefinitionRequest, opts ...grpc.CallOption) (*WorkflowDefinition, error)
+	// Delete a workflow definition. Fails if active instances reference it.
 	DeleteWorkflowDefinition(ctx context.Context, in *DeleteWorkflowDefinitionRequest, opts ...grpc.CallOption) (*DeleteWorkflowDefinitionResponse, error)
+	// List all workflow definitions for a tenant, with optional name filter.
 	ListWorkflowDefinitions(ctx context.Context, in *ListWorkflowDefinitionsRequest, opts ...grpc.CallOption) (*ListWorkflowDefinitionsResponse, error)
-	// Orchestrator Instance Management
+	// Provision a worker for a workflow definition and return its connection details.
+	// The worker is ready to accept StartWorkflow calls after this returns.
 	DeployWorkflow(ctx context.Context, in *DeployWorkflowRequest, opts ...grpc.CallOption) (*DeployWorkflowResponse, error)
+	// Get the status and endpoints of a deployed workflow instance.
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*OrchestratorInstance, error)
+	// List deployed instances, optionally filtered by definition or status.
 	ListInstances(ctx context.Context, in *ListInstancesRequest, opts ...grpc.CallOption) (*ListInstancesResponse, error)
+	// Stop a running instance. Set archive=true to preserve state for auditing.
 	StopInstance(ctx context.Context, in *StopInstanceRequest, opts ...grpc.CallOption) (*StopInstanceResponse, error)
-	// Trigger workflow execution
+	// Trigger a workflow execution on a deployed instance.
 	StartWorkflow(ctx context.Context, in *StartWorkflowRequest, opts ...grpc.CallOption) (*StartWorkflowResponse, error)
+	// Send a named signal to a running workflow (e.g. "approval-granted").
 	SignalWorkflow(ctx context.Context, in *SignalWorkflowRequest, opts ...grpc.CallOption) (*SignalWorkflowResponse, error)
+	// Cancel a running workflow. Marks it CANCELED; no further tasks will be created.
 	CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error)
 }
 
@@ -185,21 +199,35 @@ func (c *publicClient) CancelWorkflow(ctx context.Context, in *CancelWorkflowReq
 // PublicServer is the server API for Public service.
 // All implementations must embed UnimplementedPublicServer
 // for forward compatibility.
+//
+// Public is the management plane.
+// Used by the CLI and operator tools to manage workflow definitions,
+// deploy instances, and control workflow execution.
 type PublicServer interface {
-	// Workflow Definition CRUD
+	// Upload a YAML workflow definition. Validates structure and stores it.
 	CreateWorkflowDefinition(context.Context, *CreateWorkflowDefinitionRequest) (*WorkflowDefinition, error)
+	// Retrieve a stored workflow definition by its internal ID.
 	GetWorkflowDefinition(context.Context, *GetWorkflowDefinitionRequest) (*WorkflowDefinition, error)
+	// Replace a definition's YAML content. Creates a new version; prior version is retained.
 	UpdateWorkflowDefinition(context.Context, *UpdateWorkflowDefinitionRequest) (*WorkflowDefinition, error)
+	// Delete a workflow definition. Fails if active instances reference it.
 	DeleteWorkflowDefinition(context.Context, *DeleteWorkflowDefinitionRequest) (*DeleteWorkflowDefinitionResponse, error)
+	// List all workflow definitions for a tenant, with optional name filter.
 	ListWorkflowDefinitions(context.Context, *ListWorkflowDefinitionsRequest) (*ListWorkflowDefinitionsResponse, error)
-	// Orchestrator Instance Management
+	// Provision a worker for a workflow definition and return its connection details.
+	// The worker is ready to accept StartWorkflow calls after this returns.
 	DeployWorkflow(context.Context, *DeployWorkflowRequest) (*DeployWorkflowResponse, error)
+	// Get the status and endpoints of a deployed workflow instance.
 	GetInstance(context.Context, *GetInstanceRequest) (*OrchestratorInstance, error)
+	// List deployed instances, optionally filtered by definition or status.
 	ListInstances(context.Context, *ListInstancesRequest) (*ListInstancesResponse, error)
+	// Stop a running instance. Set archive=true to preserve state for auditing.
 	StopInstance(context.Context, *StopInstanceRequest) (*StopInstanceResponse, error)
-	// Trigger workflow execution
+	// Trigger a workflow execution on a deployed instance.
 	StartWorkflow(context.Context, *StartWorkflowRequest) (*StartWorkflowResponse, error)
+	// Send a named signal to a running workflow (e.g. "approval-granted").
 	SignalWorkflow(context.Context, *SignalWorkflowRequest) (*SignalWorkflowResponse, error)
+	// Cancel a running workflow. Marks it CANCELED; no further tasks will be created.
 	CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error)
 	mustEmbedUnimplementedPublicServer()
 }

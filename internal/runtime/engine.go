@@ -327,6 +327,65 @@ func (e *Engine) CompleteTask(ctx context.Context, taskID uuid.UUID, result map[
 	return nil
 }
 
+// TaskAdvancementEffect describes what the workflow engine did after task resolution.
+type TaskAdvancementEffect int
+
+const (
+	EffectTasksPending TaskAdvancementEffect = iota // more tasks remain in this state
+	EffectAdvanced                                   // workflow moved to next state
+	EffectCompleted                                  // workflow is now COMPLETED
+	EffectFailed                                     // workflow is now FAILED
+	EffectRetrying                                   // task will be retried
+	EffectWaiting                                    // workflow is waiting (timer/signal)
+)
+
+// SubmitTaskResult stores the evidence, marks the task completed, advances the workflow,
+// and returns an effect code so callers can inform the agent what happened next.
+func (e *Engine) SubmitTaskResult(ctx context.Context, taskID uuid.UUID, result map[string]interface{}, evidence map[string]interface{}) (TaskAdvancementEffect, error) {
+	task, err := e.store.GetTask(ctx, taskID)
+	if err != nil {
+		return EffectFailed, err
+	}
+	if err := e.store.CompleteTaskWithEvidence(ctx, taskID, result, evidence); err != nil {
+		return EffectFailed, err
+	}
+
+	pending, err := e.store.CountPendingTasks(ctx, task.WorkflowInstanceID)
+	if err != nil {
+		return EffectFailed, err
+	}
+	if pending > 0 {
+		go func() {
+			if err := e.resumeWorkflowAfterTask(context.Background(), task.WorkflowInstanceID); err != nil {
+				log.Printf("resumeWorkflowAfterTask error: %v", err)
+			}
+		}()
+		return EffectTasksPending, nil
+	}
+
+	// Determine effect synchronously so we can return it.
+	instance, events, err := e.store.LoadInstance(ctx, task.WorkflowInstanceID)
+	if err != nil {
+		return EffectFailed, err
+	}
+	def, err := e.registry.Get(ctx, instance.WorkflowDefinitionID)
+	if err != nil {
+		return EffectFailed, err
+	}
+	state := e.findState(def, instance.CurrentPhase)
+	if state == nil {
+		_ = e.store.UpdateWorkflowStatus(ctx, task.WorkflowInstanceID, "FAILED")
+		return EffectFailed, nil
+	}
+
+	if state.End() {
+		go func() { _ = e.advanceFromState(context.Background(), instance, events, state, def) }()
+		return EffectCompleted, nil
+	}
+	go func() { _ = e.advanceFromState(context.Background(), instance, events, state, def) }()
+	return EffectAdvanced, nil
+}
+
 // FailTask marks a task as failed and checks if the workflow can advance.
 func (e *Engine) FailTask(ctx context.Context, taskID uuid.UUID, errorDetails interface{}) error {
 	task, err := e.store.GetTask(ctx, taskID)

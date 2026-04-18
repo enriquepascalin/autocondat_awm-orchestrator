@@ -84,7 +84,7 @@ func main() {
 	}()
 
 	grpcServer := grpc.NewServer()
-	orchestratorServer := api.NewOrchestratorServer(engine, sup)
+	orchestratorServer := api.NewOrchestratorServer(engine, sup, st)
 	awmv1.RegisterOrchestratorServer(grpcServer, orchestratorServer)
 	publicServer := api.NewPublicServer(engine, definitionRegistry, sup, st, db)
 	awmv1.RegisterPublicServer(grpcServer, publicServer)

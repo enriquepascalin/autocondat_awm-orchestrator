@@ -83,12 +83,12 @@ func (InstanceStatus) EnumDescriptor() ([]byte, []int) {
 
 type WorkflowDefinition struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // internal UUID
 	Tenant        string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	DefinitionId  string                 `protobuf:"bytes,4,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"` // from YAML 'id'
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                                     // human label
+	DefinitionId  string                 `protobuf:"bytes,4,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"` // "id" field from the YAML
 	Version       int32                  `protobuf:"varint,5,opt,name=version,proto3" json:"version,omitempty"`
-	YamlContent   string                 `protobuf:"bytes,6,opt,name=yaml_content,json=yamlContent,proto3" json:"yaml_content,omitempty"`
+	YamlContent   string                 `protobuf:"bytes,6,opt,name=yaml_content,json=yamlContent,proto3" json:"yaml_content,omitempty"` // raw YAML as uploaded
 	CreatedBy     string                 `protobuf:"bytes,7,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
@@ -192,8 +192,9 @@ func (x *WorkflowDefinition) GetUpdatedAt() *timestamppb.Timestamp {
 type CreateWorkflowDefinitionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tenant        string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	YamlContent   string                 `protobuf:"bytes,3,opt,name=yaml_content,json=yamlContent,proto3" json:"yaml_content,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                  // human label for this definition
+	YamlContent   string                 `protobuf:"bytes,3,opt,name=yaml_content,json=yamlContent,proto3" json:"yaml_content,omitempty"` // full YAML file contents
+	CreatedBy     string                 `protobuf:"bytes,4,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`       // agent_id or user identifier of the uploader
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -249,9 +250,16 @@ func (x *CreateWorkflowDefinitionRequest) GetYamlContent() string {
 	return ""
 }
 
+func (x *CreateWorkflowDefinitionRequest) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
 type GetWorkflowDefinitionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // internal UUID
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -296,7 +304,7 @@ func (x *GetWorkflowDefinitionRequest) GetId() string {
 type UpdateWorkflowDefinitionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	YamlContent   string                 `protobuf:"bytes,2,opt,name=yaml_content,json=yamlContent,proto3" json:"yaml_content,omitempty"` // creates new version
+	YamlContent   string                 `protobuf:"bytes,2,opt,name=yaml_content,json=yamlContent,proto3" json:"yaml_content,omitempty"` // replaces current content; bumps version
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -436,8 +444,9 @@ func (x *DeleteWorkflowDefinitionResponse) GetDeleted() bool {
 type ListWorkflowDefinitionsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tenant        string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	NameFilter    string                 `protobuf:"bytes,2,opt,name=name_filter,json=nameFilter,proto3" json:"name_filter,omitempty"` // optional substring match on name
+	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -475,6 +484,13 @@ func (*ListWorkflowDefinitionsRequest) Descriptor() ([]byte, []int) {
 func (x *ListWorkflowDefinitionsRequest) GetTenant() string {
 	if x != nil {
 		return x.Tenant
+	}
+	return ""
+}
+
+func (x *ListWorkflowDefinitionsRequest) GetNameFilter() string {
+	if x != nil {
+		return x.NameFilter
 	}
 	return ""
 }
@@ -629,12 +645,12 @@ func (x *OrchestratorInstance) GetHealthCheckAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// InstanceEndpoints describes how agents and tools reach this instance.
 type InstanceEndpoints struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Grpc          string                 `protobuf:"bytes,1,opt,name=grpc,proto3" json:"grpc,omitempty"`
-	Rest          string                 `protobuf:"bytes,2,opt,name=rest,proto3" json:"rest,omitempty"`
-	Graphql       string                 `protobuf:"bytes,3,opt,name=graphql,proto3" json:"graphql,omitempty"`
-	Websocket     string                 `protobuf:"bytes,4,opt,name=websocket,proto3" json:"websocket,omitempty"`
+	Grpc          string                 `protobuf:"bytes,1,opt,name=grpc,proto3" json:"grpc,omitempty"`     // host:port for the Orchestrator gRPC service
+	Rest          string                 `protobuf:"bytes,2,opt,name=rest,proto3" json:"rest,omitempty"`     // optional HTTP/REST gateway
+	Health        string                 `protobuf:"bytes,3,opt,name=health,proto3" json:"health,omitempty"` // HTTP health check URL
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -683,16 +699,9 @@ func (x *InstanceEndpoints) GetRest() string {
 	return ""
 }
 
-func (x *InstanceEndpoints) GetGraphql() string {
+func (x *InstanceEndpoints) GetHealth() string {
 	if x != nil {
-		return x.Graphql
-	}
-	return ""
-}
-
-func (x *InstanceEndpoints) GetWebsocket() string {
-	if x != nil {
-		return x.Websocket
+		return x.Health
 	}
 	return ""
 }
@@ -700,7 +709,7 @@ func (x *InstanceEndpoints) GetWebsocket() string {
 type DeployWorkflowRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowDefinitionId string                 `protobuf:"bytes,1,opt,name=workflow_definition_id,json=workflowDefinitionId,proto3" json:"workflow_definition_id,omitempty"`
-	ResourceOverrides    map[string]string      `protobuf:"bytes,2,rep,name=resource_overrides,json=resourceOverrides,proto3" json:"resource_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ResourceOverrides    map[string]string      `protobuf:"bytes,2,rep,name=resource_overrides,json=resourceOverrides,proto3" json:"resource_overrides,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // e.g. {"port": "50052"}
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -968,7 +977,7 @@ func (x *ListInstancesResponse) GetNextPageToken() string {
 type StopInstanceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Archive       bool                   `protobuf:"varint,2,opt,name=archive,proto3" json:"archive,omitempty"` // if true, preserve logs and state
+	Archive       bool                   `protobuf:"varint,2,opt,name=archive,proto3" json:"archive,omitempty"` // if true, preserve event log and task history
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1065,9 +1074,9 @@ type StartWorkflowRequest struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowDefinitionId string                 `protobuf:"bytes,1,opt,name=workflow_definition_id,json=workflowDefinitionId,proto3" json:"workflow_definition_id,omitempty"`
 	Tenant               string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
-	Input                *structpb.Struct       `protobuf:"bytes,3,opt,name=input,proto3" json:"input,omitempty"`
-	IdempotencyKey       string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
-	ScheduledAt          *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`
+	Input                *structpb.Struct       `protobuf:"bytes,3,opt,name=input,proto3" json:"input,omitempty"`                                         // initial context passed to the first state
+	IdempotencyKey       string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"` // prevents duplicate starts on retry
+	ScheduledAt          *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=scheduled_at,json=scheduledAt,proto3" json:"scheduled_at,omitempty"`          // if set, start at this time instead of now
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -1140,7 +1149,7 @@ func (x *StartWorkflowRequest) GetScheduledAt() *timestamppb.Timestamp {
 type StartWorkflowResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowInstanceId   string                 `protobuf:"bytes,1,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
-	OrchestratorEndpoint string                 `protobuf:"bytes,2,opt,name=orchestrator_endpoint,json=orchestratorEndpoint,proto3" json:"orchestrator_endpoint,omitempty"`
+	OrchestratorEndpoint string                 `protobuf:"bytes,2,opt,name=orchestrator_endpoint,json=orchestratorEndpoint,proto3" json:"orchestrator_endpoint,omitempty"` // gRPC address agents should connect to
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -1192,7 +1201,7 @@ func (x *StartWorkflowResponse) GetOrchestratorEndpoint() string {
 type SignalWorkflowRequest struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowInstanceId string                 `protobuf:"bytes,1,opt,name=workflow_instance_id,json=workflowInstanceId,proto3" json:"workflow_instance_id,omitempty"`
-	SignalName         string                 `protobuf:"bytes,2,opt,name=signal_name,json=signalName,proto3" json:"signal_name,omitempty"`
+	SignalName         string                 `protobuf:"bytes,2,opt,name=signal_name,json=signalName,proto3" json:"signal_name,omitempty"` // e.g. "approval-granted", "timer-expired"
 	Payload            *structpb.Struct       `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
@@ -1406,11 +1415,13 @@ const file_awm_v1_public_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"p\n" +
+	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x8f\x01\n" +
 	"\x1fCreateWorkflowDefinitionRequest\x12\x16\n" +
 	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
-	"\fyaml_content\x18\x03 \x01(\tR\vyamlContent\".\n" +
+	"\fyaml_content\x18\x03 \x01(\tR\vyamlContent\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\x04 \x01(\tR\tcreatedBy\".\n" +
 	"\x1cGetWorkflowDefinitionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"T\n" +
 	"\x1fUpdateWorkflowDefinitionRequest\x12\x0e\n" +
@@ -1419,12 +1430,14 @@ const file_awm_v1_public_proto_rawDesc = "" +
 	"\x1fDeleteWorkflowDefinitionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"<\n" +
 	" DeleteWorkflowDefinitionResponse\x12\x18\n" +
-	"\adeleted\x18\x01 \x01(\bR\adeleted\"t\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted\"\x95\x01\n" +
 	"\x1eListWorkflowDefinitionsRequest\x12\x16\n" +
-	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1b\n" +
-	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x1f\n" +
+	"\vname_filter\x18\x02 \x01(\tR\n" +
+	"nameFilter\x12\x1b\n" +
+	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x03 \x01(\tR\tpageToken\"\x87\x01\n" +
+	"page_token\x18\x04 \x01(\tR\tpageToken\"\x87\x01\n" +
 	"\x1fListWorkflowDefinitionsResponse\x12<\n" +
 	"\vdefinitions\x18\x01 \x03(\v2\x1a.awm.v1.WorkflowDefinitionR\vdefinitions\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"\xc4\x02\n" +
@@ -1435,12 +1448,11 @@ const file_awm_v1_public_proto_rawDesc = "" +
 	"\tendpoints\x18\x04 \x01(\v2\x19.awm.v1.InstanceEndpointsR\tendpoints\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12B\n" +
-	"\x0fhealth_check_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\rhealthCheckAt\"s\n" +
+	"\x0fhealth_check_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\rhealthCheckAt\"S\n" +
 	"\x11InstanceEndpoints\x12\x12\n" +
 	"\x04grpc\x18\x01 \x01(\tR\x04grpc\x12\x12\n" +
-	"\x04rest\x18\x02 \x01(\tR\x04rest\x12\x18\n" +
-	"\agraphql\x18\x03 \x01(\tR\agraphql\x12\x1c\n" +
-	"\twebsocket\x18\x04 \x01(\tR\twebsocket\"\xf8\x01\n" +
+	"\x04rest\x18\x02 \x01(\tR\x04rest\x12\x16\n" +
+	"\x06health\x18\x03 \x01(\tR\x06health\"\xf8\x01\n" +
 	"\x15DeployWorkflowRequest\x124\n" +
 	"\x16workflow_definition_id\x18\x01 \x01(\tR\x14workflowDefinitionId\x12c\n" +
 	"\x12resource_overrides\x18\x02 \x03(\v24.awm.v1.DeployWorkflowRequest.ResourceOverridesEntryR\x11resourceOverrides\x1aD\n" +

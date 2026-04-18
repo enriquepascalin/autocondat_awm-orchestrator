@@ -94,16 +94,21 @@ func TestPostgresStore_GetTask(t *testing.T) {
 	taskID := uuid.New()
 	workflowID := uuid.New()
 
+	now := time.Now().UTC()
 	rows := sqlmock.NewRows([]string{
 		"id", "workflow_instance_id", "state_name", "activity_name",
-		"capabilities", "roles", "input", "status", "assigned_agent_id", "deadline", "parent_task_id",
+		"capabilities", "roles", "input", "output", "evidence",
+		"status", "assigned_agent_id", "deadline", "parent_task_id",
+		"created_at", "updated_at",
 	}).AddRow(
 		taskID, workflowID, "my-state", "test_activity",
 		`{test}`, `{}`,
-		`{"key":"value"}`, "PENDING", nil, nil, nil,
+		`{"key":"value"}`, `null`, `null`,
+		"PENDING", nil, nil, nil,
+		now, now,
 	)
 
-	mock.ExpectQuery(`SELECT id, workflow_instance_id, state_name, activity_name, capabilities, roles, input, status, assigned_agent_id, deadline, parent_task_id FROM tasks WHERE id = \$1`).
+	mock.ExpectQuery(`SELECT id, workflow_instance_id, state_name, activity_name,\s+capabilities, roles, input, COALESCE`).
 		WithArgs(taskID).
 		WillReturnRows(rows)
 
